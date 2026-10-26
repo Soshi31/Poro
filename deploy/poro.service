@@ -1,0 +1,22 @@
+[Unit]
+Description=Poro AI robot
+After=sound.target bluetooth.target network.target
+Wants=bluetooth.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=poro
+SupplementaryGroups=bluetooth netdev
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+WorkingDirectory=/home/poro/Poro
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/poro/Poro/main.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

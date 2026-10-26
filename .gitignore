@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+voice/_vendor/
+third_party/whisper.cpp/
+third_party/llama.cpp/
+models/llm/*.gguf
+models/llm/*.part
+models/tts/*.onnx
+models/tts/*.part
+brain/*.sqlite3
+brain/*.sqlite3-*
+snapshots/*.jpg
+models/voice/*.bin
+models/voice/*.part
