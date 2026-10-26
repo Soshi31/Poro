@@ -1,6 +1,6 @@
 # Poro 🐾
 
-**Poro** este un robot companion care rulează complet local (fără cloud) pe un **Raspberry Pi 4B**. Are doi ochi expresivi pe display-uri rotunde GC9A01, o limbă acționată de servo, microfon și difuzor I2S, cameră, senzor IMU BNO085 și un „creier” LLM local. Se controlează și dintr-o aplicație Android: **Poro Companion**.
+**Poro** este un robot companion care rulează complet local (fără cloud) pe un **Raspberry Pi 4B**. Are doi ochi expresivi pe display-uri rotunde GC9A01, o limbă acționată de servo, microfon și difuzor I2S, cameră, senzor IMU BNO085 și un „creier” LLM local. Se controlează și dintr-o aplicație Android dedicată: **Poro Companion** (`PoroApp/`).
 
 ## Funcționalități
 
@@ -14,7 +14,7 @@
   - după 7 minute de inactivitate, ochi sleepy și un căscat;
   - după 10 minute, `SLEEP`: camera, LLM-ul și PWM-ul limbii sunt oprite, iar FPS-ul scade;
   - trezirea se face la scuturare, la „Hey Poro, wake up” sau din aplicație, cu o animație closed → sleepy → open și un voiceline.
-- **Aplicație mobilă** (HTTP REST, Bluetooth SPP, BLE): vezi mai jos.
+- **Aplicație mobilă Android PoroApp** (Kotlin, Jetpack Compose, HTTP REST, Bluetooth SPP, BLE Proximitate, Fizică 2D Snax): vezi mai jos.
 
 ## Hardware
 
@@ -35,6 +35,7 @@ Pinii, rotațiile și timpii sunt în [`config.py`](config.py).
 main.py             # punctul de intrare (poro.service)
 config.py           # toată configurația
 poro_runtime.py     # RecoverySlot: repornire și suspendare a subsistemelor
+PoroApp/            # Aplicația mobilă nativă Android (Kotlin & Jetpack Compose)
 behavior/           # arbitrul stărilor ochilor, sleep/wake
 brain/              # agent LLM, prompturi, intenții directe, memorie SQLite
 voice/              # microfon, VAD, wake word, STT, TTS
@@ -108,11 +109,33 @@ Calea `/home/poro/Poro` și utilizatorul `poro` sunt scrise în `deploy/poro.ser
 
 Mai multe detalii despre pornire, TTS și benchmark LLM sunt în [`deploy/README.md`](deploy/README.md).
 
-## Aplicația mobilă „Poro Companion”
+## Aplicația mobilă Android „Poro Companion” (`PoroApp/`)
 
-Serverul mobil pornește odată cu Poro, dacă `MOBILE_ENABLED = True`.
+Aplicația nativă Android este localizată în folderul [`PoroApp/`](PoroApp/) și este construită în **Kotlin** și **Jetpack Compose** cu un design vizual inspirat din tema **Freljord / Dark Sci-Fi**.
 
-### HTTP REST (port 8000)
+### Funcționalități Aplicație Android
+1. **Tab 1: Poro-Snax (Simulare Fizică 2D & Aruncare prin Gesturi)**:
+   - Motor fizic 2D cu 22 de biscuiți Snax ce se rostogolesc real în cutie cu efecte haptice de micro-vibrație.
+   - **Aruncare Snax**: Scuturarea telefonului (`G-force > 2.8g`) aruncă un Snax către robot.
+   - **Blocare Proximitate**: Gestul de aruncare funcționează **doar când telefonul este aproape de robot** ($\le 1.0\text{ m}$ prin BLE sau senzorul de proximitate).
+   - **Animație Pop & Explozie de Steluțe**: Snax-ul crește rapid la 780px în centrul ecranului, urmat de o explozie 360° de steluțe Freljordian albe și albastre (`star.png`) ce țâșnesc din spatele Snax-ului.
+2. **Tab 2: Control & Console**:
+   - **Terminal Chat LLM**: Conversație directă cu agentul AI al robotului (`/api/chat`).
+   - **Acțiuni Rapide**: `👅 Blep`, `☀️ Wake`, `🌙 Sleep`, `🔇 Muted` / `🔊 Mute`.
+   - **Control Emoții & Joystick Privire**: 6 butoane de emoție (`NORMAL`, `HEART`, `STAR`, `SLEEPY`, `DEAD`, `DIZZY`) și joystick circular de 210dp pentru controlul direcției ochilor (`(x, y)` vectorial).
+   - **Conexiune IP & Telemetrie**: Configurare IP REST, stare Online/Offline, citiri în timp real pentru BNO085 (Roll/Pitch/Scuturare) și proximitate BLE (distanta estimată în metri).
+   - **Configurare Wi-Fi (Bluetooth SPP)**: Detectare automată a robotului Poro împerecheat, scanare rețele Wi-Fi din apropiere și trimiterea credentialelor Wi-Fi prin Bluetooth RFCOMM/SPP dintr-o singură atingere.
+
+### Rulare & Compilare Aplicație Android
+ Deschide folderul `PoroApp/` în **Android Studio (Ladybug / 2024.2+)** și rulează proiectul pe orice dispozitiv Android cu **Android 8.0+ (API 26+)**.
+
+---
+
+### Contracte Server Mobil Raspberry Pi (`mobile/`)
+
+Serverul mobil pornește odată cu Poro pe Raspberry Pi, dacă `MOBILE_ENABLED = True`.
+
+#### HTTP REST (port 8000)
 
 | Endpoint | Rol |
 | --- | --- |
@@ -122,15 +145,15 @@ Serverul mobil pornește odată cu Poro, dacă `MOBILE_ENABLED = True`.
 | `GET /api/telemetry` | `status`, `battery_ok`, `last_text`, `bno: {roll, pitch, shaken}` |
 
 ```sh
-curl -X POST http://<IP_POro>:8000/api/action \
+curl -X POST http://<IP_Poro>:8000/api/action \
   -H 'Content-Type: application/json' -d '{"action":"FEED_SNAX","parameter":null}'
 ```
 
-### Bluetooth SPP (Wi-Fi provisioning)
+#### Bluetooth SPP (Wi-Fi provisioning)
 
 Serverul RFCOMM (UUID `00001101-0000-1000-8000-00805F9B34FB`, canal 1) primește `{"ssid": "...", "pass": "..."}\n` și conectează `wlan0` prin `nmcli`.
 
-### BLE proximitate
+#### BLE proximitate
 
 Poro face advertising BLE cu numele `Poro` și TxPower −59 dBm. Telefonul estimează distanța din RSSI. Flag-urile sunt LE+BR/EDR, ca Android să poată deschide și conexiunea SPP clasică.
 
@@ -156,4 +179,3 @@ Toate în [`config.py`](config.py):
 ## Licență
 
 Proiect personal. Modelele și dependențele externe (llama.cpp, whisper.cpp, Piper, Qwen) au propriile licențe.
-
