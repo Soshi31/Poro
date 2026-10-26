@@ -36,6 +36,7 @@ main.py             # punctul de intrare (poro.service)
 config.py           # toată configurația
 poro_runtime.py     # RecoverySlot: repornire și suspendare a subsistemelor
 PoroApp/            # Aplicația mobilă nativă Android (Kotlin & Jetpack Compose)
+stl/                # fișiere 3D pentru imprimare (carcasă, suporturi, tambur limbă)
 behavior/           # arbitrul stărilor ochilor, sleep/wake
 brain/              # agent LLM, prompturi, intenții directe, memorie SQLite
 voice/              # microfon, VAD, wake word, STT, TTS
