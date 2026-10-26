@@ -156,3 +156,4 @@ Toate în [`config.py`](config.py):
 ## Licență
 
 Proiect personal. Modelele și dependențele externe (llama.cpp, whisper.cpp, Piper, Qwen) au propriile licențe.
+
