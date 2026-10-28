@@ -173,13 +173,18 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
             if (puuid == null) {
                 tftStatusMessage = "Se caută contul Riot ($gameName#$tagLine - $regionHost)..."
-                puuid = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
+                val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
                 
-                if (puuid == null) {
-                    tftStatusMessage = "Eroare: Contul $gameName#$tagLine nu a fost găsit pe $regionHost."
-                    return@launch
+                when (result) {
+                    is RiotResult.Success -> {
+                        puuid = result.data
+                        prefs.edit().putString("saved_puuid", puuid).apply()
+                    }
+                    is RiotResult.Error -> {
+                        tftStatusMessage = result.message
+                        return@launch
+                    }
                 }
-                prefs.edit().putString("saved_puuid", puuid).apply()
             }
 
             tftStatusMessage = "Cont conectat ($regionHost)! Monitorizare meciuri TFT..."
@@ -367,6 +372,8 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
         var tempName by remember { mutableStateOf(viewModel.gameName) }
         var tempTag by remember { mutableStateOf(viewModel.tagLine.removePrefix("#")) }
         var tempRegionHost by remember { mutableStateOf(viewModel.regionHost) }
+        var tempKey by remember { mutableStateOf(viewModel.apiKey) }
+        var showKeyInput by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf("") }
 
         AlertDialog(
@@ -421,6 +428,29 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Opțiuni Avansate:", fontSize = 11.sp, color = Color.Gray)
+                        TextButton(onClick = { showKeyInput = !showKeyInput }) {
+                            Text(if (showKeyInput) "Ascunde API Key" else "Editează API Key", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+
+                    if (showKeyInput) {
+                        OutlinedTextField(
+                            value = tempKey,
+                            onValueChange = { tempKey = it; errorMessage = "" },
+                            label = { Text("Riot API Key (RGAPI-...)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     if (errorMessage.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
@@ -434,7 +464,7 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         if (tempName.trim().isBlank() || cleanTag.isBlank() || tempRegionHost.trim().isBlank()) {
                             errorMessage = "Numele, Tag-ul și Regiunea sunt obligatorii!"
                         } else {
-                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost, viewModel.apiKey)
+                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost, tempKey)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
@@ -551,13 +581,28 @@ fun PoroSnaxTab(
     val accelX by sensorManager.accelX.collectAsState()
     val accelY by sensorManager.accelY.collectAsState()
 
-    val biscuits = remember { 
-        List(22) { 
-            BiscuitState(
-                x = (120..380).random().toFloat(), 
-                y = (150..480).random().toFloat()
-            ) 
-        } 
+    val visibleSnaxTarget = viewModel.snaxCount.coerceAtMost(22)
+    val biscuits = remember { mutableStateListOf<BiscuitState>() }
+
+    LaunchedEffect(visibleSnaxTarget) {
+        if (biscuits.size < visibleSnaxTarget) {
+            val needed = visibleSnaxTarget - biscuits.size
+            repeat(needed) {
+                biscuits.add(
+                    BiscuitState(
+                        x = (120..380).random().toFloat(),
+                        y = (150..300).random().toFloat()
+                    )
+                )
+            }
+        } else if (biscuits.size > visibleSnaxTarget) {
+            val toRemove = biscuits.size - visibleSnaxTarget
+            repeat(toRemove) {
+                if (biscuits.isNotEmpty()) {
+                    biscuits.removeAt(biscuits.lastIndex)
+                }
+            }
+        }
     }
     
     val starParticles = remember { mutableStateListOf<StarParticle>() }

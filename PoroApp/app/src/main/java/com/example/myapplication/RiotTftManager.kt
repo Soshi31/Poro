@@ -27,6 +27,11 @@ data class TftMatchResponse(
     val info: TftMatchInfo?
 )
 
+sealed class RiotResult<out T> {
+    data class Success<out T>(val data: T) : RiotResult<T>()
+    data class Error(val code: Int, val message: String) : RiotResult<Nothing>()
+}
+
 object RiotTftManager {
 
     private val client = OkHttpClient.Builder()
@@ -44,10 +49,9 @@ object RiotTftManager {
         return "https://$cleanHost"
     }
 
-    suspend fun getPuuidByRiotId(regionHost: String, gameName: String, tagLine: String, apiKey: String): String? = withContext(Dispatchers.IO) {
+    suspend fun getPuuidByRiotId(regionHost: String, gameName: String, tagLine: String, apiKey: String): RiotResult<String> = withContext(Dispatchers.IO) {
         try {
             val encodedName = URLEncoder.encode(gameName.trim(), "UTF-8")
-            // Curățăm automat caracterul '#' dacă utilizatorul îl include (ex: "#EUNE" -> "EUNE")
             val cleanTag = tagLine.trim().removePrefix("#")
             val encodedTag = URLEncoder.encode(cleanTag, "UTF-8")
             val host = formatHost(regionHost)
@@ -60,18 +64,45 @@ object RiotTftManager {
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string()
-                    if (body != null) {
-                        val account = gson.fromJson(body, RiotAccountResponse::class.java)
-                        return@withContext account.puuid
+                when (response.code) {
+                    200 -> {
+                        val body = response.body?.string()
+                        if (body != null) {
+                            val account = gson.fromJson(body, RiotAccountResponse::class.java)
+                            return@withContext RiotResult.Success(account.puuid)
+                        } else {
+                            return@withContext RiotResult.Error(500, "Răspuns gol de la Riot API.")
+                        }
+                    }
+                    401, 403 -> {
+                        return@withContext RiotResult.Error(
+                            response.code,
+                            "API Key Riot invalid/expirat (HTTP ${response.code}). Obține o cheie nouă de pe developer.riotgames.com."
+                        )
+                    }
+                    404 -> {
+                        return@withContext RiotResult.Error(
+                            404,
+                            "Contul $gameName#$cleanTag nu a fost găsit pe $regionHost."
+                        )
+                    }
+                    429 -> {
+                        return@withContext RiotResult.Error(
+                            429,
+                            "Riot API Rate Limit depășit. Reîncearcă în câteva minute."
+                        )
+                    }
+                    else -> {
+                        return@withContext RiotResult.Error(
+                            response.code,
+                            "Eroare Riot API (HTTP ${response.code})."
+                        )
                     }
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            return@withContext RiotResult.Error(0, "Eroare rețea/conexiune: ${e.localizedMessage ?: "Necunoscută"}")
         }
-        return@withContext null
     }
 
     suspend fun getLatestTftMatchId(regionHost: String, puuid: String, apiKey: String): String? = withContext(Dispatchers.IO) {
