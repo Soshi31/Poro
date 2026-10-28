@@ -1,10 +1,12 @@
 package com.example.myapplication
 
+import android.app.Application
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -32,8 +34,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -57,11 +58,13 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-class PoroViewModel : ViewModel() {
+class PoroViewModel(application: Application) : AndroidViewModel(application) {
+    private val prefs = application.getSharedPreferences("poro_prefs", Context.MODE_PRIVATE)
+
     val telemetryFlow = PoroApiClient.telemetryFlow
     val isOnline = PoroApiClient.isOnline
 
-    var ipAddress by mutableStateOf(PoroApiClient.getBaseUrl())
+    var ipAddress by mutableStateOf(prefs.getString("saved_ip", "http://192.168.1.50:8000") ?: "http://192.168.1.50:8000")
         private set
 
     var chatMessage by mutableStateOf("")
@@ -80,6 +83,7 @@ class PoroViewModel : ViewModel() {
     private var lastGazeTime = 0L
 
     init {
+        PoroApiClient.setBaseUrl(ipAddress)
         viewModelScope.launch {
             PoroApiClient.startTelemetryPolling()
         }
@@ -103,11 +107,15 @@ class PoroViewModel : ViewModel() {
 
     fun updateIpAddress(newIp: String) {
         ipAddress = newIp
+        PoroApiClient.setBaseUrl(newIp)
+        prefs.edit().putString("saved_ip", PoroApiClient.getBaseUrl()).apply()
     }
 
     fun saveIpAddress() {
         PoroApiClient.setBaseUrl(ipAddress)
-        ipAddress = PoroApiClient.getBaseUrl()
+        val formattedUrl = PoroApiClient.getBaseUrl()
+        ipAddress = formattedUrl
+        prefs.edit().putString("saved_ip", formattedUrl).apply()
     }
 
     fun updateChatMessage(msg: String) {
@@ -290,22 +298,8 @@ class StarParticle(
     var vx: Float,
     var vy: Float,
     var size: Float,
-    var alpha: Float = 1f,
-    val color: Color
+    var alpha: Float = 1f
 )
-
-fun Path.addStar(center: Offset, outerRadius: Float, innerRadius: Float = outerRadius * 0.45f) {
-    val points = 5
-    val angle = Math.PI / points
-    for (i in 0 until 2 * points) {
-        val r = if (i % 2 == 0) outerRadius else innerRadius
-        val currAngle = i * angle - Math.PI / 2
-        val x = center.x + (r * kotlin.math.cos(currAngle)).toFloat()
-        val y = center.y + (r * kotlin.math.sin(currAngle)).toFloat()
-        if (i == 0) moveTo(x, y) else lineTo(x, y)
-    }
-    close()
-}
 
 @Composable
 fun PoroSnaxTab(
@@ -480,14 +474,6 @@ fun PoroSnaxTab(
                         delay(250) // Așteaptă pop-ul rapid al Snax-ului
                         
                         val random = java.util.Random()
-                        val iceColors = listOf(
-                            Color.White,
-                            Color(0xFF00E5FF), // True Ice
-                            Color(0xFF82B1FF), // Frost Blue
-                            Color(0xFFE0F7FA), // Snow White/Blue
-                            Color(0xFF00B0FF)  // Deep Ice
-                        )
-
                         repeat(40) {
                             val angle = random.nextFloat() * 2 * Math.PI.toFloat()
                             val speed = (400..1500).random().toFloat()
@@ -497,8 +483,7 @@ fun PoroSnaxTab(
                                     y = boxHeight / 2f,
                                     vx = kotlin.math.cos(angle) * speed,
                                     vy = kotlin.math.sin(angle) * speed,
-                                    size = (20..60).random().toFloat(),
-                                    color = iceColors.random()
+                                    size = (20..60).random().toFloat()
                                 )
                             )
                         }
@@ -584,7 +569,7 @@ fun PoroSnaxTab(
                     
                     // Creștere foarte rapidă (Pop!): crește de la 120px la 780px în primele 0.30 secunde
                     val growthProgress = (elapsedTime / 0.30f).coerceIn(0f, 1f)
-                    val smoothFactor = androidx.compose.animation.core.FastOutSlowInEasing.transform(growthProgress)
+                    val smoothFactor = FastOutSlowInEasing.transform(growthProgress)
                     val giantSnaxSize = 120f + (smoothFactor * 660f) // Crește rapid până la 780px uriaș!
 
                     // Opacitate: vizibilitate 100% pe parcursul animației, face fade-out lin în ultimele 0.6 secunde
