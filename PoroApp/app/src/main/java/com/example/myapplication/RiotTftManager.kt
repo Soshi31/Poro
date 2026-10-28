@@ -14,6 +14,11 @@ data class RiotAccountResponse(
     val tagLine: String
 )
 
+data class SummonerResponse(
+    val profileIconId: Int,
+    val summonerLevel: Int
+)
+
 data class TftParticipant(
     val puuid: String,
     val placement: Int
@@ -103,6 +108,38 @@ object RiotTftManager {
         } catch (e: Exception) {
             return@withContext RiotResult.Error(0, "Eroare rețea/conexiune: ${e.localizedMessage ?: "Necunoscută"}")
         }
+    }
+
+    suspend fun getSummonerProfileIconId(regionHost: String, puuid: String, apiKey: String): Int? = withContext(Dispatchers.IO) {
+        try {
+            val platformHost = when {
+                regionHost.contains("europe", ignoreCase = true) -> "https://eun1.api.riotgames.com"
+                regionHost.contains("americas", ignoreCase = true) -> "https://na1.api.riotgames.com"
+                regionHost.contains("asia", ignoreCase = true) -> "https://kr.api.riotgames.com"
+                regionHost.contains("sea", ignoreCase = true) -> "https://oc1.api.riotgames.com"
+                else -> "https://eun1.api.riotgames.com"
+            }
+            val url = "$platformHost/lol/summoner/v4/summoners/by-puuid/$puuid"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("X-Riot-Token", apiKey.trim())
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                    if (body != null) {
+                        val summoner = gson.fromJson(body, SummonerResponse::class.java)
+                        return@withContext summoner.profileIconId
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
     }
 
     suspend fun getLatestTftMatchId(regionHost: String, puuid: String, apiKey: String): String? = withContext(Dispatchers.IO) {

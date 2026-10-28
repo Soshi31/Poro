@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,7 +21,6 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Refresh
@@ -39,7 +39,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -78,6 +80,12 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     var apiKey by mutableStateOf(prefs.getString("riot_api_key", "RGAPI-12345678-abcd-1234-abcd-1234567890ab") ?: "")
         private set
     var showRiotDialog by mutableStateOf(gameName.isBlank() || tagLine.isBlank() || regionHost.isBlank())
+        private set
+
+    // LoL Profile Icon State (Default 588 = Iconic League Poro Icon)
+    var profileIconId by mutableIntStateOf(prefs.getInt("saved_profile_icon_id", 588))
+        private set
+    var profileIconUrl by mutableStateOf("https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$profileIconId.png")
         private set
 
     // Poro-Snax Inventory Stock (Setat la 0 la prima deschidere)
@@ -165,6 +173,15 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                         tftStatusMessage = result.message
                         return@launch
                     }
+                }
+            }
+
+            if (puuid != null && !puuid.startsWith("puuid_")) {
+                val iconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey)
+                if (iconId != null) {
+                    profileIconId = iconId
+                    profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$iconId.png"
+                    prefs.edit().putInt("saved_profile_icon_id", iconId).apply()
                 }
             }
 
@@ -854,12 +871,19 @@ fun PoroSnaxTab(
                 Text("Stoc Poro-Snax: ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Text("${viewModel.snaxCount}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.weight(1f))
-                IconButton(onClick = { viewModel.openRiotDialog() }) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Profil Riot ID",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .border(BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary), CircleShape)
+                        .clickable { viewModel.openRiotDialog() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = viewModel.profileIconUrl,
+                        contentDescription = "LoL Profile Icon",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
                     )
                 }
             }
@@ -1073,9 +1097,38 @@ fun ControlConsoleTab(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    Text("Cont Riot Configurat: ${if (viewModel.gameName.isNotBlank()) "${viewModel.gameName}#${viewModel.tagLine}" else "Neconfigurat"}", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Stoc Poro-Snax: ${viewModel.snaxCount}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .border(BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary), CircleShape)
+                        ) {
+                            AsyncImage(
+                                model = viewModel.profileIconUrl,
+                                contentDescription = "LoL Profile Icon",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = if (viewModel.gameName.isNotBlank()) "${viewModel.gameName}#${viewModel.tagLine}" else "Neconfigurat",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "Poro-Snax în Stoc: ${viewModel.snaxCount}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Status TFT: ${viewModel.tftStatusMessage}", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
                     
