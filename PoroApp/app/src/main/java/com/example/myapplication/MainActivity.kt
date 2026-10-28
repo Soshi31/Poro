@@ -67,6 +67,30 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     var ipAddress by mutableStateOf(prefs.getString("saved_ip", "http://192.168.1.50:8000") ?: "http://192.168.1.50:8000")
         private set
 
+    // Riot ID & TFT Monitor State
+    var gameName by mutableStateOf(prefs.getString("riot_game_name", "") ?: "")
+        private set
+    var tagLine by mutableStateOf(prefs.getString("riot_tag_line", "") ?: "")
+        private set
+    var apiKey by mutableStateOf(prefs.getString("riot_api_key", "RGAPI-12345678-abcd-1234-abcd-1234567890ab") ?: "")
+        private set
+    var showRiotDialog by mutableStateOf(gameName.isBlank() || tagLine.isBlank())
+        private set
+
+    // Poro-Snax Inventory Stock (Setat la 0 la prima deschidere)
+    var snaxCount by mutableIntStateOf(
+        if (!prefs.getBoolean("has_initialized_snax", false)) {
+            prefs.edit().putInt("poro_snax_count", 0).putBoolean("has_initialized_snax", true).apply()
+            0
+        } else {
+            prefs.getInt("poro_snax_count", 0)
+        }
+    )
+        private set
+
+    var tftStatusMessage by mutableStateOf("Monitorizare TFT inactivă")
+        private set
+
     var chatMessage by mutableStateOf("")
         private set
 
@@ -86,6 +110,99 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         PoroApiClient.setBaseUrl(ipAddress)
         viewModelScope.launch {
             PoroApiClient.startTelemetryPolling()
+        }
+        if (gameName.isNotBlank() && tagLine.isNotBlank()) {
+            startTftMonitoring()
+        }
+    }
+
+    fun saveRiotCredentials(name: String, tag: String, key: String) {
+        gameName = name.trim()
+        tagLine = tag.trim()
+        if (key.isNotBlank()) apiKey = key.trim()
+
+        prefs.edit()
+            .putString("riot_game_name", gameName)
+            .putString("riot_tag_line", tagLine)
+            .putString("riot_api_key", apiKey)
+            .apply()
+
+        showRiotDialog = false
+        startTftMonitoring()
+    }
+
+    fun openRiotDialog() {
+        showRiotDialog = true
+    }
+
+    fun dismissRiotDialog() {
+        if (gameName.isNotBlank() && tagLine.isNotBlank()) {
+            showRiotDialog = false
+        }
+    }
+
+    fun consumeSnax(): Boolean {
+        if (snaxCount > 0) {
+            snaxCount -= 1
+            prefs.edit().putInt("poro_snax_count", snaxCount).apply()
+            return true
+        }
+        return false
+    }
+
+    fun addSnax(amount: Int = 1) {
+        snaxCount += amount
+        prefs.edit().putInt("poro_snax_count", snaxCount).apply()
+    }
+
+    private fun startTftMonitoring() {
+        viewModelScope.launch {
+            tftStatusMessage = "Se caută contul Riot ($gameName#$tagLine)..."
+            val puuid = RiotTftManager.getPuuidByRiotId(gameName, tagLine, apiKey)
+            
+            if (puuid == null) {
+                tftStatusMessage = "Eroare: Contul $gameName#$tagLine nu a fost găsit."
+                return@launch
+            }
+
+            tftStatusMessage = "Cont conectat! Monitorizare meciuri TFT..."
+
+            var lastMatchId = prefs.getString("last_tft_match_id", null)
+
+            // La prima rulare, salvăm doar ultimul meci jucat fără recompense retroactive
+            if (lastMatchId == null) {
+                val initialMatchId = RiotTftManager.getLatestTftMatchId(puuid, apiKey)
+                if (initialMatchId != null) {
+                    lastMatchId = initialMatchId
+                    prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+                }
+            }
+
+            // Loop de interogare periodică
+            while (isActive) {
+                val latestMatchId = RiotTftManager.getLatestTftMatchId(puuid, apiKey)
+                
+                if (latestMatchId != null && latestMatchId != lastMatchId) {
+                    // Meci nou găsit! Preluăm detaliile meciului
+                    val matchDetails = RiotTftManager.getTftMatchDetails(latestMatchId, apiKey)
+                    val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
+
+                    if (participant != null) {
+                        val placement = participant.placement
+                        if (placement in 1..4) {
+                            addSnax(1)
+                            tftStatusMessage = "Meci nou! Locul $placement (Top 4) - Recompensă: +1 Poro-Snax!"
+                        } else {
+                            tftStatusMessage = "Meci nou! Locul $placement - Nicio recompensă."
+                        }
+                    }
+
+                    lastMatchId = latestMatchId
+                    prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+                }
+
+                delay(60_000L) // Verificare la fiecare 60s
+            }
         }
     }
 
@@ -218,6 +335,87 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun RiotIdSetupDialog(viewModel: PoroViewModel) {
+    if (viewModel.showRiotDialog) {
+        var tempName by remember { mutableStateOf(viewModel.gameName) }
+        var tempTag by remember { mutableStateOf(viewModel.tagLine) }
+        var tempKey by remember { mutableStateOf(viewModel.apiKey) }
+        var errorMessage by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissRiotDialog() },
+            title = {
+                Text("Configurare Riot ID (TFT)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            },
+            text = {
+                Column {
+                    Text(
+                        "Introdu datele contului tău Riot pentru a monitoriza automat meciurile de TFT. La fiecare clasare în Top 4 (locurile 1-4) primești +1 Poro-Snax!",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = tempName,
+                        onValueChange = { tempName = it; errorMessage = "" },
+                        label = { Text("Nume Jucător (ex: Summoner)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = tempTag,
+                        onValueChange = { tempTag = it; errorMessage = "" },
+                        label = { Text("TagLine (ex: EUNE)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = tempKey,
+                        onValueChange = { tempKey = it; errorMessage = "" },
+                        label = { Text("Riot API Key (X-Riot-Token)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (errorMessage.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (tempName.trim().isBlank() || tempTag.trim().isBlank()) {
+                            errorMessage = "Numele și Tag-ul nu pot fi goale!"
+                        } else {
+                            viewModel.saveRiotCredentials(tempName, tempTag, tempKey)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
+                ) {
+                    Text("Salvează și Monitorizează")
+                }
+            },
+            dismissButton = {
+                if (viewModel.gameName.isNotBlank() && viewModel.tagLine.isNotBlank()) {
+                    TextButton(onClick = { viewModel.dismissRiotDialog() }) {
+                        Text("Anulează")
+                    }
+                }
+            }
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PoroApp(
@@ -228,6 +426,8 @@ fun PoroApp(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Poro-Snax", "Control & Console")
+
+    RiotIdSetupDialog(viewModel)
 
     Box(modifier = Modifier.fillMaxSize()) {
         androidx.compose.foundation.Image(
@@ -447,55 +647,67 @@ fun PoroSnaxTab(
 
     val coroutineScope = rememberCoroutineScope()
 
+    val context = LocalContext.current
+
     DisposableEffect(isNearby) {
         sensorManager.onTossDetected = {
             val now = System.currentTimeMillis()
-            // ARUNCĂM SNAX DOAR DACĂ TELEFONUL ESTE LÂNGĂ ROBOT (PROXIMITATE <= 1.0m)!
+            // ARUNCĂM SNAX DOAR DACĂ TELEFONUL ESTE LÂNGĂ ROBOT (PROXIMITATE <= 1.0m) ȘI EXISTA SNAX-URI ÎN STOC!
             if (isNearby && now - lastTossTimestamp >= 5000L) {
-                lastTossTimestamp = now
+                if (viewModel.snaxCount > 0) {
+                    if (viewModel.consumeSnax()) {
+                        lastTossTimestamp = now
 
-                // Asigură că avem un biscuit disponibil pentru aruncat
-                var b = biscuits.find { !it.isFlying }
-                if (b == null) {
-                    biscuits.forEach { it.isFlying = false; it.flyingAlpha = 1f }
-                    b = biscuits.firstOrNull()
-                }
-
-                if (b != null) {
-                    b.isFlying = true
-                    b.vy = -2500f
-                    viewModel.sendAction("FEED_SNAX")
-
-                    celebrationTimeLeft = 3.2f // Animație activă 3.2 secunde
-                    starParticles.clear()
-
-                    // Steluțele sar abia când Snax-ul este aproape la dimensiunea sa maximă (după 250ms)
-                    coroutineScope.launch {
-                        delay(250) // Așteaptă pop-ul rapid al Snax-ului
-                        
-                        val random = java.util.Random()
-                        repeat(40) {
-                            val angle = random.nextFloat() * 2 * Math.PI.toFloat()
-                            val speed = (400..1500).random().toFloat()
-                            starParticles.add(
-                                StarParticle(
-                                    x = boxWidth / 2f,
-                                    y = boxHeight / 2f,
-                                    vx = kotlin.math.cos(angle) * speed,
-                                    vy = kotlin.math.sin(angle) * speed,
-                                    size = (20..60).random().toFloat()
-                                )
-                            )
+                        // Asigură că avem un biscuit disponibil pentru aruncat
+                        var b = biscuits.find { !it.isFlying }
+                        if (b == null) {
+                            biscuits.forEach { it.isFlying = false; it.flyingAlpha = 1f }
+                            b = biscuits.firstOrNull()
                         }
 
-                        delay(2250)
-                        b.isFlying = false
-                        b.flyingAlpha = 1f
-                        b.x = boxWidth / 2f
-                        b.y = boxHeight / 2f
-                        b.vx = 0f
-                        b.vy = 0f
+                        if (b != null) {
+                            b.isFlying = true
+                            b.vy = -2500f
+                            viewModel.sendAction("FEED_SNAX")
+
+                            celebrationTimeLeft = 3.2f // Animație activă 3.2 secunde
+                            starParticles.clear()
+
+                            // Steluțele sar abia când Snax-ul este aproape la dimensiunea sa maximă (după 250ms)
+                            coroutineScope.launch {
+                                delay(250) // Așteaptă pop-ul rapid al Snax-ului
+                                
+                                val random = java.util.Random()
+                                repeat(40) {
+                                    val angle = random.nextFloat() * 2 * Math.PI.toFloat()
+                                    val speed = (400..1500).random().toFloat()
+                                    starParticles.add(
+                                        StarParticle(
+                                            x = boxWidth / 2f,
+                                            y = boxHeight / 2f,
+                                            vx = kotlin.math.cos(angle) * speed,
+                                            vy = kotlin.math.sin(angle) * speed,
+                                            size = (20..60).random().toFloat()
+                                        )
+                                    )
+                                }
+
+                                delay(2250)
+                                b.isFlying = false
+                                b.flyingAlpha = 1f
+                                b.x = boxWidth / 2f
+                                b.y = boxHeight / 2f
+                                b.vx = 0f
+                                b.vy = 0f
+                            }
+                        }
                     }
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Nu mai ai Poro-Snax! Joacă TFT și obține Top 4 pentru a câștiga Poro-Snax.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -515,6 +727,26 @@ fun PoroSnaxTab(
         val snaxPainter = androidx.compose.ui.res.painterResource(id = R.drawable.poro_snax)
         val boxPainter = androidx.compose.ui.res.painterResource(id = R.drawable.poro_box)
         val starPainter = androidx.compose.ui.res.painterResource(id = R.drawable.star)
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Stoc Poro-Snax: ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text("${viewModel.snaxCount}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = { viewModel.openRiotDialog() }) {
+                    Text("Configurare Riot ID", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
+        }
 
         BoxWithConstraints(
             modifier = Modifier
@@ -699,6 +931,43 @@ fun ControlConsoleTab(
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black)
                         }
+                    }
+                }
+            }
+        }
+
+        // MONITORIZARE TFT & RIOT GAMES
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = cardBorder
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Monitorizare TFT (Riot Games)", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Serif)
+                        IconButton(onClick = { viewModel.openRiotDialog() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Edit Riot ID", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Text("Cont Riot Configurat: ${if (viewModel.gameName.isNotBlank()) "${viewModel.gameName}#${viewModel.tagLine}" else "Neconfigurat"}", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Stoc Poro-Snax: ${viewModel.snaxCount}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Status TFT: ${viewModel.tftStatusMessage}", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.openRiotDialog() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Modifică Riot ID / API Key")
                     }
                 }
             }
