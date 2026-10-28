@@ -367,7 +367,6 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
         var tempName by remember { mutableStateOf(viewModel.gameName) }
         var tempTag by remember { mutableStateOf(viewModel.tagLine.removePrefix("#")) }
         var tempRegionHost by remember { mutableStateOf(viewModel.regionHost) }
-        var tempKey by remember { mutableStateOf(viewModel.apiKey) }
         var errorMessage by remember { mutableStateOf("") }
 
         AlertDialog(
@@ -377,13 +376,6 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
             },
             text = {
                 Column {
-                    Text(
-                        "Introdu datele contului tău Riot și selectează regiunea pentru a monitoriza meciurile TFT. La fiecare clasare în Top 4 (locurile 1-4) primești +1 Poro-Snax!",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     OutlinedTextField(
                         value = tempName,
                         onValueChange = { tempName = it; errorMessage = "" },
@@ -402,9 +394,9 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    Text("Regiune Macro Riot API:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                    Text("Regiune:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
 
                     RiotRegions.forEach { option ->
@@ -429,16 +421,6 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = tempKey,
-                        onValueChange = { tempKey = it; errorMessage = "" },
-                        label = { Text("Riot API Key (X-Riot-Token)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
                     if (errorMessage.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
@@ -452,7 +434,7 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         if (tempName.trim().isBlank() || cleanTag.isBlank() || tempRegionHost.trim().isBlank()) {
                             errorMessage = "Numele, Tag-ul și Regiunea sunt obligatorii!"
                         } else {
-                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost, tempKey)
+                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost, viewModel.apiKey)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
@@ -1022,7 +1004,7 @@ fun ControlConsoleTab(
                         onClick = { viewModel.openRiotDialog() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Modifică Riot ID / API Key")
+                        Text("Modifică Riot ID")
                     }
                 }
             }
