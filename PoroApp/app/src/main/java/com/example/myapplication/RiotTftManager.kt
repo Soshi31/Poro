@@ -110,34 +110,67 @@ object RiotTftManager {
         }
     }
 
-    suspend fun getSummonerProfileIconId(regionHost: String, puuid: String, apiKey: String): Int? = withContext(Dispatchers.IO) {
-        try {
-            val platformHost = when {
-                regionHost.contains("europe", ignoreCase = true) -> "https://eun1.api.riotgames.com"
-                regionHost.contains("americas", ignoreCase = true) -> "https://na1.api.riotgames.com"
-                regionHost.contains("asia", ignoreCase = true) -> "https://kr.api.riotgames.com"
-                regionHost.contains("sea", ignoreCase = true) -> "https://oc1.api.riotgames.com"
-                else -> "https://eun1.api.riotgames.com"
-            }
-            val url = "$platformHost/lol/summoner/v4/summoners/by-puuid/$puuid"
+    suspend fun getSummonerProfileIconId(regionHost: String, puuid: String, apiKey: String, tagLine: String = ""): Int? = withContext(Dispatchers.IO) {
+        val platforms = mutableListOf<String>()
+        val tag = tagLine.trim().uppercase().removePrefix("#")
 
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("X-Riot-Token", apiKey.trim())
-                .get()
-                .build()
+        // Interogare prioritară pe baza TagLine-ului (ex: EUW, EUNE, NA, KR, TR, RU etc.)
+        when {
+            tag.contains("EUW") -> platforms.add("https://euw1.api.riotgames.com")
+            tag.contains("EUN") || tag.contains("EUNE") -> platforms.add("https://eun1.api.riotgames.com")
+            tag.contains("NA") -> platforms.add("https://na1.api.riotgames.com")
+            tag.contains("KR") -> platforms.add("https://kr.api.riotgames.com")
+            tag.contains("JP") -> platforms.add("https://jp1.api.riotgames.com")
+            tag.contains("TR") -> platforms.add("https://tr1.api.riotgames.com")
+            tag.contains("RU") -> platforms.add("https://ru.api.riotgames.com")
+            tag.contains("OCE") || tag.contains("OC") -> platforms.add("https://oc1.api.riotgames.com")
+            tag.contains("BR") -> platforms.add("https://br1.api.riotgames.com")
+            tag.contains("LAS") -> platforms.add("https://la2.api.riotgames.com")
+            tag.contains("LAN") -> platforms.add("https://la1.api.riotgames.com")
+        }
 
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string()
-                    if (body != null) {
-                        val summoner = gson.fromJson(body, SummonerResponse::class.java)
-                        return@withContext summoner.profileIconId
+        // Adăugăm serverele din regiunea macro ca fallback în caz că TagLine-ul este un număr/alt text
+        if (regionHost.contains("europe", ignoreCase = true)) {
+            if (!platforms.contains("https://eun1.api.riotgames.com")) platforms.add("https://eun1.api.riotgames.com")
+            if (!platforms.contains("https://euw1.api.riotgames.com")) platforms.add("https://euw1.api.riotgames.com")
+            if (!platforms.contains("https://tr1.api.riotgames.com")) platforms.add("https://tr1.api.riotgames.com")
+            if (!platforms.contains("https://ru.api.riotgames.com")) platforms.add("https://ru.api.riotgames.com")
+        } else if (regionHost.contains("americas", ignoreCase = true)) {
+            if (!platforms.contains("https://na1.api.riotgames.com")) platforms.add("https://na1.api.riotgames.com")
+            if (!platforms.contains("https://br1.api.riotgames.com")) platforms.add("https://br1.api.riotgames.com")
+            if (!platforms.contains("https://la1.api.riotgames.com")) platforms.add("https://la1.api.riotgames.com")
+            if (!platforms.contains("https://la2.api.riotgames.com")) platforms.add("https://la2.api.riotgames.com")
+        } else if (regionHost.contains("asia", ignoreCase = true)) {
+            if (!platforms.contains("https://kr.api.riotgames.com")) platforms.add("https://kr.api.riotgames.com")
+            if (!platforms.contains("https://jp1.api.riotgames.com")) platforms.add("https://jp1.api.riotgames.com")
+        } else if (regionHost.contains("sea", ignoreCase = true)) {
+            if (!platforms.contains("https://oc1.api.riotgames.com")) platforms.add("https://oc1.api.riotgames.com")
+            if (!platforms.contains("https://ph2.api.riotgames.com")) platforms.add("https://ph2.api.riotgames.com")
+            if (!platforms.contains("https://sg2.api.riotgames.com")) platforms.add("https://sg2.api.riotgames.com")
+        }
+
+        // Verificăm fiecare server regional până găsim pictograma reală de profil a contului
+        for (platformHost in platforms) {
+            try {
+                val url = "$platformHost/lol/summoner/v4/summoners/by-puuid/$puuid"
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("X-Riot-Token", apiKey.trim())
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (body != null) {
+                            val summoner = gson.fromJson(body, SummonerResponse::class.java)
+                            return@withContext summoner.profileIconId
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                // Încearcă următorul server de platformă
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
         return@withContext null
     }

@@ -177,7 +177,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (puuid != null && !puuid.startsWith("puuid_")) {
-                val iconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey)
+                val iconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
                 if (iconId != null) {
                     profileIconId = iconId
                     profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$iconId.png"
@@ -260,6 +260,15 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             tftStatusMessage = "Cont conectat ($gameName#$tagLine)! Monitorizare TFT..."
+
+            if (!puuid.startsWith("puuid_")) {
+                val iconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
+                if (iconId != null) {
+                    profileIconId = iconId
+                    profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$iconId.png"
+                    prefs.edit().putInt("saved_profile_icon_id", iconId).apply()
+                }
+            }
 
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
