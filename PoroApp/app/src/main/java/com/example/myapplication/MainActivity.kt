@@ -127,6 +127,12 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun getDeterministicIconId(name: String, tag: String): Int {
+        val popularPoroIcons = listOf(588, 501, 502, 503, 504, 505, 506, 507, 29, 58, 6, 8, 9, 10, 11)
+        val hash = kotlin.math.abs("$name#$tag".lowercase().hashCode())
+        return popularPoroIcons[hash % popularPoroIcons.size]
+    }
+
     fun saveRiotCredentials(name: String, tag: String, region: String, key: String = apiKey) {
         val cleanName = name.trim()
         val cleanTag = tag.trim().removePrefix("#")
@@ -144,15 +150,17 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         regionHost = cleanRegion
         if (key.isNotBlank()) apiKey = key.trim()
 
-        // Resetăm imediat pictograma de profil la Poro Icon (588) până la preluarea celei noi
-        profileIconId = 588
-        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/588.png"
+        // Schimbăm imediat pictograma de profil pentru noul Riot ID
+        val fallbackIcon = getDeterministicIconId(cleanName, cleanTag)
+        profileIconId = fallbackIcon
+        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$fallbackIcon.png"
 
         prefs.edit()
             .putString("riot_game_name", gameName)
             .putString("riot_tag_line", tagLine)
             .putString("riot_region_host", regionHost)
             .putString("riot_api_key", apiKey)
+            .putInt("saved_profile_icon_id", profileIconId)
             .apply()
 
         showRiotDialog = false
@@ -171,25 +179,25 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             var puuid = prefs.getString("saved_puuid", null)
             if (puuid == null) {
                 val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
-                when (result) {
+                puuid = when (result) {
                     is RiotResult.Success -> {
-                        puuid = result.data
-                        prefs.edit().putString("saved_puuid", puuid).apply()
+                        val realPuuid = result.data
+                        prefs.edit().putString("saved_puuid", realPuuid).apply()
+                        realPuuid
                     }
                     is RiotResult.Error -> {
-                        tftStatusMessage = result.message
-                        return@launch
+                        val localPuuid = "puuid_" + java.util.UUID.nameUUIDFromBytes("$gameName#$tagLine".lowercase().toByteArray()).toString()
+                        prefs.edit().putString("saved_puuid", localPuuid).apply()
+                        localPuuid
                     }
                 }
             }
 
-            if (puuid != null && !puuid.startsWith("puuid_")) {
-                val iconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
-                if (iconId != null) {
-                    profileIconId = iconId
-                    profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$iconId.png"
-                    prefs.edit().putInt("saved_profile_icon_id", iconId).apply()
-                }
+            val realIconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
+            if (realIconId != null) {
+                profileIconId = realIconId
+                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
+                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
             }
 
             val latestMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
@@ -257,25 +265,32 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
                 
                 puuid = when (result) {
-                    is RiotResult.Success -> result.data
+                    is RiotResult.Success -> {
+                        val realPuuid = result.data
+                        prefs.edit().putString("saved_puuid", realPuuid).apply()
+                        realPuuid
+                    }
                     is RiotResult.Error -> {
-                        // Generăm un PUUID persistent pentru ca $gameName#$tagLine să fie ÎNTOTDEAUNA conectat și ținut minte!
-                        "puuid_" + java.util.UUID.nameUUIDFromBytes("$gameName#$tagLine".lowercase().toByteArray()).toString()
+                        val localPuuid = "puuid_" + java.util.UUID.nameUUIDFromBytes("$gameName#$tagLine".lowercase().toByteArray()).toString()
+                        prefs.edit().putString("saved_puuid", localPuuid).apply()
+                        localPuuid
                     }
                 }
-                prefs.edit().putString("saved_puuid", puuid).apply()
+            }
+
+            val realIconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
+            if (realIconId != null) {
+                profileIconId = realIconId
+                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
+                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
+            } else {
+                val fallbackIcon = getDeterministicIconId(gameName, tagLine)
+                profileIconId = fallbackIcon
+                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$fallbackIcon.png"
+                prefs.edit().putInt("saved_profile_icon_id", fallbackIcon).apply()
             }
 
             tftStatusMessage = "Cont conectat ($gameName#$tagLine)! Monitorizare TFT..."
-
-            if (!puuid.startsWith("puuid_")) {
-                val iconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
-                if (iconId != null) {
-                    profileIconId = iconId
-                    profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$iconId.png"
-                    prefs.edit().putInt("saved_profile_icon_id", iconId).apply()
-                }
-            }
 
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
