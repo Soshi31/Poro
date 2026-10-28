@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Refresh
@@ -853,8 +854,13 @@ fun PoroSnaxTab(
                 Text("Stoc Poro-Snax: ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Text("${viewModel.snaxCount}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = { viewModel.openRiotDialog() }) {
-                    Text("Configurare Riot ID", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                IconButton(onClick = { viewModel.openRiotDialog() }) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Profil Riot ID",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
             }
         }
