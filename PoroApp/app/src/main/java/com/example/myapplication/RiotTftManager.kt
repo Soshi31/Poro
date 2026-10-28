@@ -1,3 +1,5 @@
+package com.example.myapplication
+
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,11 +36,22 @@ object RiotTftManager {
 
     private val gson = Gson()
 
-    suspend fun getPuuidByRiotId(gameName: String, tagLine: String, apiKey: String): String? = withContext(Dispatchers.IO) {
+    private fun formatHost(rawHost: String): String {
+        val cleanHost = rawHost.trim().lowercase()
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removeSuffix("/")
+        return "https://$cleanHost"
+    }
+
+    suspend fun getPuuidByRiotId(regionHost: String, gameName: String, tagLine: String, apiKey: String): String? = withContext(Dispatchers.IO) {
         try {
             val encodedName = URLEncoder.encode(gameName.trim(), "UTF-8")
-            val encodedTag = URLEncoder.encode(tagLine.trim(), "UTF-8")
-            val url = "https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/$encodedName/$encodedTag"
+            // Curățăm automat caracterul '#' dacă utilizatorul îl include (ex: "#EUNE" -> "EUNE")
+            val cleanTag = tagLine.trim().removePrefix("#")
+            val encodedTag = URLEncoder.encode(cleanTag, "UTF-8")
+            val host = formatHost(regionHost)
+            val url = "$host/riot/account/v1/accounts/by-riot-id/$encodedName/$encodedTag"
 
             val request = Request.Builder()
                 .url(url)
@@ -61,9 +74,10 @@ object RiotTftManager {
         return@withContext null
     }
 
-    suspend fun getLatestTftMatchId(puuid: String, apiKey: String): String? = withContext(Dispatchers.IO) {
+    suspend fun getLatestTftMatchId(regionHost: String, puuid: String, apiKey: String): String? = withContext(Dispatchers.IO) {
         try {
-            val url = "https://europe.api.riotgames.com/tft/match/v1/matches/by-puuid/$puuid/ids?count=1"
+            val host = formatHost(regionHost)
+            val url = "$host/tft/match/v1/matches/by-puuid/$puuid/ids?count=1"
 
             val request = Request.Builder()
                 .url(url)
@@ -86,9 +100,10 @@ object RiotTftManager {
         return@withContext null
     }
 
-    suspend fun getTftMatchDetails(matchId: String, apiKey: String): TftMatchResponse? = withContext(Dispatchers.IO) {
+    suspend fun getTftMatchDetails(regionHost: String, matchId: String, apiKey: String): TftMatchResponse? = withContext(Dispatchers.IO) {
         try {
-            val url = "https://europe.api.riotgames.com/tft/match/v1/matches/$matchId"
+            val host = formatHost(regionHost)
+            val url = "$host/tft/match/v1/matches/$matchId"
 
             val request = Request.Builder()
                 .url(url)

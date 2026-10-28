@@ -70,11 +70,13 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     // Riot ID & TFT Monitor State
     var gameName by mutableStateOf(prefs.getString("riot_game_name", "") ?: "")
         private set
-    var tagLine by mutableStateOf(prefs.getString("riot_tag_line", "") ?: "")
+    var tagLine by mutableStateOf((prefs.getString("riot_tag_line", "") ?: "").removePrefix("#"))
+        private set
+    var regionHost by mutableStateOf(prefs.getString("riot_region_host", "europe.api.riotgames.com") ?: "europe.api.riotgames.com")
         private set
     var apiKey by mutableStateOf(prefs.getString("riot_api_key", "RGAPI-12345678-abcd-1234-abcd-1234567890ab") ?: "")
         private set
-    var showRiotDialog by mutableStateOf(gameName.isBlank() || tagLine.isBlank())
+    var showRiotDialog by mutableStateOf(gameName.isBlank() || tagLine.isBlank() || regionHost.isBlank())
         private set
 
     // Poro-Snax Inventory Stock (Setat la 0 la prima deschidere)
@@ -111,19 +113,29 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             PoroApiClient.startTelemetryPolling()
         }
-        if (gameName.isNotBlank() && tagLine.isNotBlank()) {
+        if (gameName.isNotBlank() && tagLine.isNotBlank() && regionHost.isNotBlank()) {
             startTftMonitoring()
         }
     }
 
-    fun saveRiotCredentials(name: String, tag: String, key: String) {
-        gameName = name.trim()
-        tagLine = tag.trim()
+    fun saveRiotCredentials(name: String, tag: String, region: String, key: String) {
+        val cleanName = name.trim()
+        val cleanTag = tag.trim().removePrefix("#")
+        val cleanRegion = region.trim().lowercase().removePrefix("https://").removePrefix("http://").removeSuffix("/")
+
+        if (cleanName != gameName || cleanTag != tagLine || cleanRegion != regionHost) {
+            prefs.edit().remove("saved_puuid").remove("last_tft_match_id").apply()
+        }
+
+        gameName = cleanName
+        tagLine = cleanTag
+        regionHost = cleanRegion
         if (key.isNotBlank()) apiKey = key.trim()
 
         prefs.edit()
             .putString("riot_game_name", gameName)
             .putString("riot_tag_line", tagLine)
+            .putString("riot_region_host", regionHost)
             .putString("riot_api_key", apiKey)
             .apply()
 
@@ -136,7 +148,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissRiotDialog() {
-        if (gameName.isNotBlank() && tagLine.isNotBlank()) {
+        if (gameName.isNotBlank() && tagLine.isNotBlank() && regionHost.isNotBlank()) {
             showRiotDialog = false
         }
     }
@@ -157,34 +169,39 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startTftMonitoring() {
         viewModelScope.launch {
-            tftStatusMessage = "Se caută contul Riot ($gameName#$tagLine)..."
-            val puuid = RiotTftManager.getPuuidByRiotId(gameName, tagLine, apiKey)
-            
+            var puuid = prefs.getString("saved_puuid", null)
+
             if (puuid == null) {
-                tftStatusMessage = "Eroare: Contul $gameName#$tagLine nu a fost găsit."
-                return@launch
+                tftStatusMessage = "Se caută contul Riot ($gameName#$tagLine - $regionHost)..."
+                puuid = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
+                
+                if (puuid == null) {
+                    tftStatusMessage = "Eroare: Contul $gameName#$tagLine nu a fost găsit pe $regionHost."
+                    return@launch
+                }
+                prefs.edit().putString("saved_puuid", puuid).apply()
             }
 
-            tftStatusMessage = "Cont conectat! Monitorizare meciuri TFT..."
+            tftStatusMessage = "Cont conectat ($regionHost)! Monitorizare meciuri TFT..."
 
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
             // La prima rulare, salvăm doar ultimul meci jucat fără recompense retroactive
             if (lastMatchId == null) {
-                val initialMatchId = RiotTftManager.getLatestTftMatchId(puuid, apiKey)
+                val initialMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
                 if (initialMatchId != null) {
                     lastMatchId = initialMatchId
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
                 }
             }
 
-            // Loop de interogare periodică
+            // Loop de interogare periodică (la fiecare 60s)
             while (isActive) {
-                val latestMatchId = RiotTftManager.getLatestTftMatchId(puuid, apiKey)
+                val latestMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
                 
                 if (latestMatchId != null && latestMatchId != lastMatchId) {
                     // Meci nou găsit! Preluăm detaliile meciului
-                    val matchDetails = RiotTftManager.getTftMatchDetails(latestMatchId, apiKey)
+                    val matchDetails = RiotTftManager.getTftMatchDetails(regionHost, latestMatchId, apiKey)
                     val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
 
                     if (participant != null) {
@@ -201,7 +218,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
                 }
 
-                delay(60_000L) // Verificare la fiecare 60s
+                delay(60_000L)
             }
         }
     }
@@ -335,11 +352,21 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+data class RiotRegionOption(val name: String, val host: String)
+
+val RiotRegions = listOf(
+    RiotRegionOption("Europe (EUNE, EUW, TR, RU)", "europe.api.riotgames.com"),
+    RiotRegionOption("Americas (NA, BR, LAN, LAS)", "americas.api.riotgames.com"),
+    RiotRegionOption("Asia (KR, JP)", "asia.api.riotgames.com"),
+    RiotRegionOption("SEA / Oceania (OCE, PH, SG, TW)", "sea.api.riotgames.com")
+)
+
 @Composable
 fun RiotIdSetupDialog(viewModel: PoroViewModel) {
     if (viewModel.showRiotDialog) {
         var tempName by remember { mutableStateOf(viewModel.gameName) }
-        var tempTag by remember { mutableStateOf(viewModel.tagLine) }
+        var tempTag by remember { mutableStateOf(viewModel.tagLine.removePrefix("#")) }
+        var tempRegionHost by remember { mutableStateOf(viewModel.regionHost) }
         var tempKey by remember { mutableStateOf(viewModel.apiKey) }
         var errorMessage by remember { mutableStateOf("") }
 
@@ -351,7 +378,7 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
             text = {
                 Column {
                     Text(
-                        "Introdu datele contului tău Riot pentru a monitoriza automat meciurile de TFT. La fiecare clasare în Top 4 (locurile 1-4) primești +1 Poro-Snax!",
+                        "Introdu datele contului tău Riot și selectează regiunea pentru a monitoriza meciurile TFT. La fiecare clasare în Top 4 (locurile 1-4) primești +1 Poro-Snax!",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                     )
@@ -369,11 +396,38 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
 
                     OutlinedTextField(
                         value = tempTag,
-                        onValueChange = { tempTag = it; errorMessage = "" },
-                        label = { Text("TagLine (ex: EUNE)") },
+                        onValueChange = { tempTag = it.removePrefix("#"); errorMessage = "" },
+                        label = { Text("TagLine (ex: EUNE, 1234)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text("Regiune Macro Riot API:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    RiotRegions.forEach { option ->
+                        val isSelected = tempRegionHost.equals(option.host, ignoreCase = true)
+                        OutlinedButton(
+                            onClick = { tempRegionHost = option.host },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
+                                contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(option.name, fontSize = 11.sp)
+                                if (isSelected) Text("✓", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -394,10 +448,11 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
             confirmButton = {
                 Button(
                     onClick = {
-                        if (tempName.trim().isBlank() || tempTag.trim().isBlank()) {
-                            errorMessage = "Numele și Tag-ul nu pot fi goale!"
+                        val cleanTag = tempTag.trim().removePrefix("#")
+                        if (tempName.trim().isBlank() || cleanTag.isBlank() || tempRegionHost.trim().isBlank()) {
+                            errorMessage = "Numele, Tag-ul și Regiunea sunt obligatorii!"
                         } else {
-                            viewModel.saveRiotCredentials(tempName, tempTag, tempKey)
+                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost, tempKey)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
