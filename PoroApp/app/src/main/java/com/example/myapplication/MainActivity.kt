@@ -118,7 +118,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveRiotCredentials(name: String, tag: String, region: String) {
+    fun saveRiotCredentials(name: String, tag: String, region: String, key: String = apiKey) {
         val cleanName = name.trim()
         val cleanTag = tag.trim().removePrefix("#")
         val cleanRegion = region.trim().lowercase().removePrefix("https://").removePrefix("http://").removeSuffix("/")
@@ -130,15 +130,73 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         gameName = cleanName
         tagLine = cleanTag
         regionHost = cleanRegion
+        if (key.isNotBlank()) apiKey = key.trim()
 
         prefs.edit()
             .putString("riot_game_name", gameName)
             .putString("riot_tag_line", tagLine)
             .putString("riot_region_host", regionHost)
+            .putString("riot_api_key", apiKey)
             .apply()
 
         showRiotDialog = false
         startTftMonitoring()
+    }
+
+    fun checkNewTftMatchNow() {
+        viewModelScope.launch {
+            if (gameName.isBlank() || tagLine.isBlank()) {
+                showRiotDialog = true
+                return@launch
+            }
+
+            tftStatusMessage = "Se verifică ultimul meci jucat de $gameName#$tagLine..."
+
+            var puuid = prefs.getString("saved_puuid", null)
+            if (puuid == null) {
+                val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
+                when (result) {
+                    is RiotResult.Success -> {
+                        puuid = result.data
+                        prefs.edit().putString("saved_puuid", puuid).apply()
+                    }
+                    is RiotResult.Error -> {
+                        tftStatusMessage = result.message
+                        return@launch
+                    }
+                }
+            }
+
+            val latestMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
+            var lastMatchId = prefs.getString("last_tft_match_id", null)
+
+            if (latestMatchId == null) {
+                tftStatusMessage = "Nu s-a găsit niciun meci recent pentru $gameName#$tagLine pe $regionHost."
+                return@launch
+            }
+
+            if (latestMatchId != lastMatchId) {
+                val matchDetails = RiotTftManager.getTftMatchDetails(regionHost, latestMatchId, apiKey)
+                val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
+
+                if (participant != null) {
+                    val placement = participant.placement
+                    if (placement in 1..4) {
+                        addSnax(1)
+                        tftStatusMessage = "Meci nou găsit! Locul $placement (Top 4) - Recompensă +1 Poro-Snax acordată!"
+                    } else {
+                        tftStatusMessage = "Meci nou găsit! Locul $placement - Nicio recompensă (necesar Top 4)."
+                    }
+                } else {
+                    tftStatusMessage = "Meci găsit ($latestMatchId), dar participantul nu a fost identificat."
+                }
+
+                lastMatchId = latestMatchId
+                prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+            } else {
+                tftStatusMessage = "Ești la zi! Ultimul meci înregistrat ($lastMatchId) a fost deja verificat."
+            }
+        }
     }
 
     fun openRiotDialog() {
@@ -1016,11 +1074,24 @@ fun ControlConsoleTab(
                     Text("Status TFT: ${viewModel.tftStatusMessage}", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
                     
                     Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedButton(
-                        onClick = { viewModel.openRiotDialog() },
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Modifică Riot ID")
+                        Button(
+                            onClick = { viewModel.checkNewTftMatchNow() },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
+                        ) {
+                            Text("Verifică Meci TFT", fontSize = 12.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.openRiotDialog() },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Modifică Riot ID", fontSize = 12.sp)
+                        }
                     }
                 }
             }
