@@ -142,11 +142,14 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         val cleanName = name.trim()
         val cleanTag = tag.trim().removePrefix("#")
 
-        // Resetăm tot cache-ul vechi (PUUID, Meciuri, Pictogramă Profil) pentru noul cont
+        // Resetăm stocul Poro-Snax la 0 și tot cache-ul vechi când se schimba profilul
+        snaxCount = 0
+
         prefs.edit()
             .remove("saved_puuid")
             .remove("last_tft_match_id")
             .remove("saved_profile_icon_id")
+            .putInt("poro_snax_count", 0)
             .apply()
 
         gameName = cleanName
@@ -156,8 +159,8 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
         // Schimbăm imediat pictograma de profil pentru noul Riot ID
         val fallbackIcon = getDeterministicIconId(cleanName, cleanTag)
-        profileIconId = fallbackIcon
-        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$fallbackIcon.png"
+        profileIconId = if (fallbackIcon > 0) fallbackIcon else 588
+        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$profileIconId.png"
 
         prefs.edit()
             .putString("riot_game_name", gameName)
@@ -895,6 +898,8 @@ fun PoroSnaxTab(
                     AsyncImage(
                         model = viewModel.profileIconUrl,
                         contentDescription = "LoL Profile Icon",
+                        placeholder = androidx.compose.ui.res.painterResource(id = R.drawable.poro_snax),
+                        error = androidx.compose.ui.res.painterResource(id = R.drawable.poro_snax),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(CircleShape)
                     )
@@ -1123,6 +1128,8 @@ fun ControlConsoleTab(
                             AsyncImage(
                                 model = viewModel.profileIconUrl,
                                 contentDescription = "LoL Profile Icon",
+                                placeholder = androidx.compose.ui.res.painterResource(id = R.drawable.poro_snax),
+                                error = androidx.compose.ui.res.painterResource(id = R.drawable.poro_snax),
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize().clip(CircleShape)
                             )
