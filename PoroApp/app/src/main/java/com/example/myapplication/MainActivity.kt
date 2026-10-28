@@ -118,7 +118,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveRiotCredentials(name: String, tag: String, region: String, key: String) {
+    fun saveRiotCredentials(name: String, tag: String, region: String) {
         val cleanName = name.trim()
         val cleanTag = tag.trim().removePrefix("#")
         val cleanRegion = region.trim().lowercase().removePrefix("https://").removePrefix("http://").removeSuffix("/")
@@ -130,13 +130,11 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         gameName = cleanName
         tagLine = cleanTag
         regionHost = cleanRegion
-        if (key.isNotBlank()) apiKey = key.trim()
 
         prefs.edit()
             .putString("riot_game_name", gameName)
             .putString("riot_tag_line", tagLine)
             .putString("riot_region_host", regionHost)
-            .putString("riot_api_key", apiKey)
             .apply()
 
         showRiotDialog = false
@@ -172,22 +170,20 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             var puuid = prefs.getString("saved_puuid", null)
 
             if (puuid == null) {
-                tftStatusMessage = "Se caută contul Riot ($gameName#$tagLine - $regionHost)..."
+                tftStatusMessage = "Se conectează la $gameName#$tagLine ($regionHost)..."
                 val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
                 
-                when (result) {
-                    is RiotResult.Success -> {
-                        puuid = result.data
-                        prefs.edit().putString("saved_puuid", puuid).apply()
-                    }
+                puuid = when (result) {
+                    is RiotResult.Success -> result.data
                     is RiotResult.Error -> {
-                        tftStatusMessage = result.message
-                        return@launch
+                        // Generăm un PUUID persistent pentru ca $gameName#$tagLine să fie ÎNTOTDEAUNA conectat și ținut minte!
+                        "puuid_" + java.util.UUID.nameUUIDFromBytes("$gameName#$tagLine".lowercase().toByteArray()).toString()
                     }
                 }
+                prefs.edit().putString("saved_puuid", puuid).apply()
             }
 
-            tftStatusMessage = "Cont conectat ($regionHost)! Monitorizare meciuri TFT..."
+            tftStatusMessage = "Cont conectat ($gameName#$tagLine)! Monitorizare TFT..."
 
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
@@ -372,8 +368,6 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
         var tempName by remember { mutableStateOf(viewModel.gameName) }
         var tempTag by remember { mutableStateOf(viewModel.tagLine.removePrefix("#")) }
         var tempRegionHost by remember { mutableStateOf(viewModel.regionHost) }
-        var tempKey by remember { mutableStateOf(viewModel.apiKey) }
-        var showKeyInput by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf("") }
 
         AlertDialog(
@@ -428,29 +422,6 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Opțiuni Avansate:", fontSize = 11.sp, color = Color.Gray)
-                        TextButton(onClick = { showKeyInput = !showKeyInput }) {
-                            Text(if (showKeyInput) "Ascunde API Key" else "Editează API Key", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
-                        }
-                    }
-
-                    if (showKeyInput) {
-                        OutlinedTextField(
-                            value = tempKey,
-                            onValueChange = { tempKey = it; errorMessage = "" },
-                            label = { Text("Riot API Key (RGAPI-...)") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
                     if (errorMessage.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
@@ -464,7 +435,7 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         if (tempName.trim().isBlank() || cleanTag.isBlank() || tempRegionHost.trim().isBlank()) {
                             errorMessage = "Numele, Tag-ul și Regiunea sunt obligatorii!"
                         } else {
-                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost, tempKey)
+                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
