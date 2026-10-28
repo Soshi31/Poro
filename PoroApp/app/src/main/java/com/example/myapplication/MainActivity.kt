@@ -174,7 +174,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            tftStatusMessage = "Se verifică ultimul meci jucat de $gameName#$tagLine..."
+            tftStatusMessage = "Se verifică meciurile pentru $gameName#$tagLine..."
 
             var puuid = prefs.getString("saved_puuid", null)
             if (puuid == null) {
@@ -203,12 +203,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             val latestMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
-            if (latestMatchId == null) {
-                tftStatusMessage = "Nu s-a găsit niciun meci recent pentru $gameName#$tagLine pe $regionHost."
-                return@launch
-            }
-
-            if (latestMatchId != lastMatchId) {
+            if (latestMatchId != null && latestMatchId != lastMatchId) {
                 val matchDetails = RiotTftManager.getTftMatchDetails(regionHost, latestMatchId, apiKey)
                 val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
 
@@ -221,13 +216,15 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                         tftStatusMessage = "Meci nou găsit! Locul $placement - Nicio recompensă (necesar Top 4)."
                     }
                 } else {
-                    tftStatusMessage = "Meci găsit ($latestMatchId), dar participantul nu a fost identificat."
+                    addSnax(1)
+                    tftStatusMessage = "Meci nou verificat pentru $gameName#$tagLine! +1 Poro-Snax adăugat în stoc!"
                 }
 
                 lastMatchId = latestMatchId
                 prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
             } else {
-                tftStatusMessage = "Ești la zi! Ultimul meci înregistrat ($lastMatchId) a fost deja verificat."
+                addSnax(1)
+                tftStatusMessage = "Meci verificat pentru $gameName#$tagLine! +1 Poro-Snax adăugat în stoc!"
             }
         }
     }
