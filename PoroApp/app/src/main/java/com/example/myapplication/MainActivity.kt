@@ -132,14 +132,21 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         val cleanTag = tag.trim().removePrefix("#")
         val cleanRegion = region.trim().lowercase().removePrefix("https://").removePrefix("http://").removeSuffix("/")
 
-        if (cleanName != gameName || cleanTag != tagLine || cleanRegion != regionHost) {
-            prefs.edit().remove("saved_puuid").remove("last_tft_match_id").apply()
-        }
+        // Resetăm tot cache-ul vechi (PUUID, Meciuri, Pictogramă Profil) pentru noul cont
+        prefs.edit()
+            .remove("saved_puuid")
+            .remove("last_tft_match_id")
+            .remove("saved_profile_icon_id")
+            .apply()
 
         gameName = cleanName
         tagLine = cleanTag
         regionHost = cleanRegion
         if (key.isNotBlank()) apiKey = key.trim()
+
+        // Resetăm imediat pictograma de profil la Poro Icon (588) până la preluarea celei noi
+        profileIconId = 588
+        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/588.png"
 
         prefs.edit()
             .putString("riot_game_name", gameName)
@@ -447,13 +454,17 @@ val RiotRegions = listOf(
     RiotRegionOption("SEA / Oceania (OCE, PH, SG, TW)", "sea.api.riotgames.com")
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RiotIdSetupDialog(viewModel: PoroViewModel) {
     if (viewModel.showRiotDialog) {
         var tempName by remember { mutableStateOf(viewModel.gameName) }
         var tempTag by remember { mutableStateOf(viewModel.tagLine.removePrefix("#")) }
         var tempRegionHost by remember { mutableStateOf(viewModel.regionHost) }
+        var isDropdownExpanded by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf("") }
+
+        val selectedRegionName = RiotRegions.find { it.host.equals(tempRegionHost, ignoreCase = true) }?.name ?: RiotRegions.first().name
 
         AlertDialog(
             onDismissRequest = { viewModel.dismissRiotDialog() },
@@ -482,27 +493,38 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Text("Regiune:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(4.dp))
+                    ExposedDropdownMenuBox(
+                        expanded = isDropdownExpanded,
+                        onExpandedChange = { isDropdownExpanded = !isDropdownExpanded },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = selectedRegionName,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Selectează Regiunea") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded)
+                            },
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.secondary
+                            ),
+                            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
+                        )
 
-                    RiotRegions.forEach { option ->
-                        val isSelected = tempRegionHost.equals(option.host, ignoreCase = true)
-                        OutlinedButton(
-                            onClick = { tempRegionHost = option.host },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
-                                contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
+                        ExposedDropdownMenu(
+                            expanded = isDropdownExpanded,
+                            onDismissRequest = { isDropdownExpanded = false }
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(option.name, fontSize = 11.sp)
-                                if (isSelected) Text("✓", fontWeight = FontWeight.Bold)
+                            RiotRegions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.name, fontSize = 12.sp, fontWeight = if (option.host.equals(tempRegionHost, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal) },
+                                    onClick = {
+                                        tempRegionHost = option.host
+                                        isDropdownExpanded = false
+                                    }
+                                )
                             }
                         }
                     }
