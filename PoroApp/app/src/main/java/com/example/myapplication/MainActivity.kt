@@ -1109,9 +1109,6 @@ fun ControlConsoleTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Monitorizare TFT (Riot Games)", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Serif)
-                        IconButton(onClick = { viewModel.openRiotDialog() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Edit Riot ID", tint = MaterialTheme.colorScheme.primary)
-                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     

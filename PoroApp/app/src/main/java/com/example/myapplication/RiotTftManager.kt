@@ -145,8 +145,8 @@ object RiotTftManager {
                 "LAS" -> "las"
                 else -> "eune"
             }
-            val cleanName = URLEncoder.encode(gameName.trim(), "UTF-8")
-            val cleanTag = URLEncoder.encode(tagLine.trim().removePrefix("#"), "UTF-8")
+            val cleanName = URLEncoder.encode(gameName.trim(), "UTF-8").replace("+", "%20")
+            val cleanTag = URLEncoder.encode(tagLine.trim().removePrefix("#"), "UTF-8").replace("+", "%20")
             val url = "https://www.op.gg/summoners/$opGgRegion/$cleanName-$cleanTag"
 
             val request = Request.Builder()
@@ -160,15 +160,12 @@ object RiotTftManager {
                 if (response.isSuccessful) {
                     val html = response.body?.string()
                     if (html != null) {
-                        val regex1 = Regex("""profile_icons/profileIcon(\d+)\.jpg""")
-                        val regex2 = Regex("""profileicon/(\d+)\.png""")
-                        val regex3 = Regex(""""profile_icon_id":\s*(\d+)""")
-
-                        val match1 = regex1.find(html)?.groupValues?.get(1)?.toIntOrNull()
-                        val match2 = regex2.find(html)?.groupValues?.get(1)?.toIntOrNull()
-                        val match3 = regex3.find(html)?.groupValues?.get(1)?.toIntOrNull()
-
-                        return@withContext match1 ?: match2 ?: match3
+                        // Regex mult mai specific pentru iconul de profil pe Op.gg
+                        val regex = Regex("""<img[^>]+src="[^"]+profileIcon(\d+)\.(jpg|png)"""", setOf(RegexOption.IGNORE_CASE))
+                        val match = regex.find(html)
+                        if (match != null) {
+                            return@withContext match.groupValues[1].toIntOrNull()
+                        }
                     }
                 }
             }
@@ -177,6 +174,8 @@ object RiotTftManager {
         }
         return@withContext null
     }
+
+
 
     suspend fun getLatestTftMatchId(macroHost: String, puuid: String, apiKey: String): String? = withContext(Dispatchers.IO) {
         try {
