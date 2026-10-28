@@ -183,11 +183,28 @@ object RiotTftManager {
                 if (response.isSuccessful) {
                     val html = response.body?.string()
                     if (html != null) {
-                        // Regex mult mai specific pentru iconul de profil pe Op.gg
-                        val regex = Regex("""<img[^>]+src="[^"]+profileIcon(\d+)\.(jpg|png)"""", setOf(RegexOption.IGNORE_CASE))
-                        val match = regex.find(html)
-                        if (match != null) {
-                            return@withContext match.groupValues[1].toIntOrNull()
+                        val regex1 = Regex("""<img[^>]+src=[^>]+profileIcon(\d+)\.(?:jpg|png)""", setOf(RegexOption.IGNORE_CASE))
+                        val match1 = regex1.find(html)?.groupValues?.get(1)?.toIntOrNull()
+                        if (match1 != null) return@withContext match1
+
+                        val regex2 = Regex(""""profile_icon_id":\s*(\d+)""")
+                        val match2 = regex2.find(html)?.groupValues?.get(1)?.toIntOrNull()
+                        if (match2 != null) return@withContext match2
+
+                        val regex3 = Regex("""profileicon/(\d+)\.png""", setOf(RegexOption.IGNORE_CASE))
+                        val match3 = regex3.find(html)?.groupValues?.get(1)?.toIntOrNull()
+                        if (match3 != null) return@withContext match3
+
+                        val regex4 = Regex("""profileicon/(\d+)\.jpg""", setOf(RegexOption.IGNORE_CASE))
+                        val match4 = regex4.find(html)?.groupValues?.get(1)?.toIntOrNull()
+                        if (match4 != null) return@withContext match4
+                        
+                        val regex5 = Regex("""(\d+)\.png""", setOf(RegexOption.IGNORE_CASE))
+                        for (match in regex5.findAll(html)) {
+                            val candidate = match.groupValues[1]
+                            if (candidate.length > 2 && candidate != "0511" && candidate != "144") {
+                                return@withContext candidate.toIntOrNull()
+                            }
                         }
                     }
                 }
