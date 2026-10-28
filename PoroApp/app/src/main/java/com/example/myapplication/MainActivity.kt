@@ -197,6 +197,34 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putInt("poro_snax_count", snaxCount).apply()
     }
 
+    private suspend fun updateProfileIcon(puuid: String) {
+        // 1. Încercăm prin Riot API oficial
+        if (!puuid.startsWith("puuid_")) {
+            val realIconId = RiotTftManager.getSummonerProfileIconId(platformHost, puuid, apiKey)
+            if (realIconId != null) {
+                profileIconId = realIconId
+                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
+                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
+                return
+            }
+        }
+
+        // 2. Căutăm pictograma reală din joc de pe Op.gg (funcționează 100% direct pe Nume#Tag și Regiune)
+        val publicIconId = RiotTftManager.fetchPublicProfileIconId(regionCode, gameName, tagLine)
+        if (publicIconId != null) {
+            profileIconId = publicIconId
+            profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$publicIconId.png"
+            prefs.edit().putInt("saved_profile_icon_id", publicIconId).apply()
+            return
+        }
+
+        // 3. Fallback unics Poro
+        val fallbackIcon = getDeterministicIconId(gameName, tagLine)
+        profileIconId = fallbackIcon
+        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$fallbackIcon.png"
+        prefs.edit().putInt("saved_profile_icon_id", fallbackIcon).apply()
+    }
+
     private fun startTftMonitoring() {
         viewModelScope.launch {
             var puuid = prefs.getString("saved_puuid", null)
@@ -219,17 +247,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val realIconId = RiotTftManager.getSummonerProfileIconId(platformHost, puuid, apiKey)
-            if (realIconId != null) {
-                profileIconId = realIconId
-                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
-                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
-            } else {
-                val fallbackIcon = getDeterministicIconId(gameName, tagLine)
-                profileIconId = fallbackIcon
-                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$fallbackIcon.png"
-                prefs.edit().putInt("saved_profile_icon_id", fallbackIcon).apply()
-            }
+            updateProfileIcon(puuid)
 
             tftStatusMessage = "Cont $gameName#$tagLine ($regionCode) conectat! Monitorizare TFT activă (verificare la 10 min)..."
 

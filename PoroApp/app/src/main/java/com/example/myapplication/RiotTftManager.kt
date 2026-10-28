@@ -130,6 +130,54 @@ object RiotTftManager {
         return@withContext null
     }
 
+    suspend fun fetchPublicProfileIconId(regionCode: String, gameName: String, tagLine: String): Int? = withContext(Dispatchers.IO) {
+        try {
+            val opGgRegion = when (regionCode.trim().uppercase()) {
+                "EUW" -> "euw"
+                "EUNE" -> "eune"
+                "NA" -> "na"
+                "KR" -> "kr"
+                "TR" -> "tr"
+                "RU" -> "ru"
+                "OCE" -> "oce"
+                "BR" -> "br"
+                "LAN" -> "lan"
+                "LAS" -> "las"
+                else -> "eune"
+            }
+            val cleanName = URLEncoder.encode(gameName.trim(), "UTF-8")
+            val cleanTag = URLEncoder.encode(tagLine.trim().removePrefix("#"), "UTF-8")
+            val url = "https://www.op.gg/summoners/$opGgRegion/$cleanName-$cleanTag"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                .addHeader("Accept-Language", "en-US,en;q=0.9")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val html = response.body?.string()
+                    if (html != null) {
+                        val regex1 = Regex("""profile_icons/profileIcon(\d+)\.jpg""")
+                        val regex2 = Regex("""profileicon/(\d+)\.png""")
+                        val regex3 = Regex(""""profile_icon_id":\s*(\d+)""")
+
+                        val match1 = regex1.find(html)?.groupValues?.get(1)?.toIntOrNull()
+                        val match2 = regex2.find(html)?.groupValues?.get(1)?.toIntOrNull()
+                        val match3 = regex3.find(html)?.groupValues?.get(1)?.toIntOrNull()
+
+                        return@withContext match1 ?: match2 ?: match3
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
+    }
+
     suspend fun getLatestTftMatchId(macroHost: String, puuid: String, apiKey: String): String? = withContext(Dispatchers.IO) {
         try {
             val host = formatHost(macroHost)
