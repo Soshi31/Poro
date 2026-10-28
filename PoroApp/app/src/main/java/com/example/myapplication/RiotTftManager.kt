@@ -46,6 +46,29 @@ object RiotTftManager {
 
     private val gson = Gson()
 
+    suspend fun getLatestDDragonVersion(): String? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("https://ddragon.leagueoflegends.com/api/versions.json")
+                .addHeader("User-Agent", "Mozilla/5.0")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                    if (body != null) {
+                        val versions = gson.fromJson(body, Array<String>::class.java)
+                        return@withContext versions.firstOrNull()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
+    }
+
     private fun formatHost(rawHost: String): String {
         val cleanHost = rawHost.trim().lowercase()
             .removePrefix("https://")

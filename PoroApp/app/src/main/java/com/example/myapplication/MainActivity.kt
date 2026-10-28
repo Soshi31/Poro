@@ -88,9 +88,11 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     val macroHost: String get() = currentRegionOption.macroHost
 
     // LoL Profile Icon State (Default 588 = Iconic League Poro Icon)
+    var ddragonVersion by mutableStateOf(prefs.getString("ddragon_version", "14.21.1") ?: "14.21.1")
+        private set
     var profileIconId by mutableIntStateOf(prefs.getInt("saved_profile_icon_id", 588))
         private set
-    var profileIconUrl by mutableStateOf("https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$profileIconId.png")
+    var profileIconUrl by mutableStateOf("https://ddragon.leagueoflegends.com/cdn/$ddragonVersion/img/profileicon/$profileIconId.png")
         private set
 
     // Poro-Snax Inventory Stock (Setat la 0 la prima deschidere)
@@ -160,7 +162,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         // Schimbăm imediat pictograma de profil pentru noul Riot ID
         val fallbackIcon = getDeterministicIconId(cleanName, cleanTag)
         profileIconId = if (fallbackIcon > 0) fallbackIcon else 588
-        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$profileIconId.png"
+        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/$ddragonVersion/img/profileicon/$profileIconId.png"
 
         prefs.edit()
             .putString("riot_game_name", gameName)
@@ -172,6 +174,40 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
         showRiotDialog = false
         startTftMonitoring()
+    }
+
+    private suspend fun updateProfileIcon(puuid: String) {
+        val latestVersion = RiotTftManager.getLatestDDragonVersion()
+        if (latestVersion != null && latestVersion != ddragonVersion) {
+            ddragonVersion = latestVersion
+            prefs.edit().putString("ddragon_version", ddragonVersion).apply()
+        }
+
+        // 1. Încercăm prin Riot API oficial
+        if (!puuid.startsWith("puuid_")) {
+            val realIconId = RiotTftManager.getSummonerProfileIconId(platformHost, puuid, apiKey)
+            if (realIconId != null) {
+                profileIconId = realIconId
+                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/$ddragonVersion/img/profileicon/$realIconId.png"
+                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
+                return
+            }
+        }
+
+        // 2. Căutăm pictograma reală din joc de pe Op.gg (funcționează 100% direct pe Nume#Tag și Regiune)
+        val publicIconId = RiotTftManager.fetchPublicProfileIconId(regionCode, gameName, tagLine)
+        if (publicIconId != null) {
+            profileIconId = publicIconId
+            profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/$ddragonVersion/img/profileicon/$publicIconId.png"
+            prefs.edit().putInt("saved_profile_icon_id", publicIconId).apply()
+            return
+        }
+
+        // 3. Fallback unics Poro
+        val fallbackIcon = getDeterministicIconId(gameName, tagLine)
+        profileIconId = fallbackIcon
+        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/$ddragonVersion/img/profileicon/$fallbackIcon.png"
+        prefs.edit().putInt("saved_profile_icon_id", fallbackIcon).apply()
     }
 
 
@@ -200,33 +236,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putInt("poro_snax_count", snaxCount).apply()
     }
 
-    private suspend fun updateProfileIcon(puuid: String) {
-        // 1. Încercăm prin Riot API oficial
-        if (!puuid.startsWith("puuid_")) {
-            val realIconId = RiotTftManager.getSummonerProfileIconId(platformHost, puuid, apiKey)
-            if (realIconId != null) {
-                profileIconId = realIconId
-                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
-                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
-                return
-            }
-        }
 
-        // 2. Căutăm pictograma reală din joc de pe Op.gg (funcționează 100% direct pe Nume#Tag și Regiune)
-        val publicIconId = RiotTftManager.fetchPublicProfileIconId(regionCode, gameName, tagLine)
-        if (publicIconId != null) {
-            profileIconId = publicIconId
-            profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$publicIconId.png"
-            prefs.edit().putInt("saved_profile_icon_id", publicIconId).apply()
-            return
-        }
-
-        // 3. Fallback unics Poro
-        val fallbackIcon = getDeterministicIconId(gameName, tagLine)
-        profileIconId = fallbackIcon
-        profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$fallbackIcon.png"
-        prefs.edit().putInt("saved_profile_icon_id", fallbackIcon).apply()
-    }
 
     private fun startTftMonitoring() {
         viewModelScope.launch {
