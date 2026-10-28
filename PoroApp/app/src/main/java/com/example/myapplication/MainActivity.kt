@@ -75,12 +75,17 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var tagLine by mutableStateOf((prefs.getString("riot_tag_line", "") ?: "").removePrefix("#"))
         private set
-    var regionHost by mutableStateOf(prefs.getString("riot_region_host", "europe.api.riotgames.com") ?: "europe.api.riotgames.com")
+    var regionCode by mutableStateOf(prefs.getString("riot_region_code", "EUNE") ?: "EUNE")
         private set
     var apiKey by mutableStateOf(prefs.getString("riot_api_key", "RGAPI-12345678-abcd-1234-abcd-1234567890ab") ?: "")
         private set
-    var showRiotDialog by mutableStateOf(gameName.isBlank() || tagLine.isBlank() || regionHost.isBlank())
+    var showRiotDialog by mutableStateOf(gameName.isBlank() || tagLine.isBlank())
         private set
+
+    val currentRegionOption: RiotRegionOption
+        get() = RiotRegions.find { it.code.equals(regionCode, ignoreCase = true) } ?: RiotRegions.first()
+    val platformHost: String get() = currentRegionOption.platformHost
+    val macroHost: String get() = currentRegionOption.macroHost
 
     // LoL Profile Icon State (Default 588 = Iconic League Poro Icon)
     var profileIconId by mutableIntStateOf(prefs.getInt("saved_profile_icon_id", 588))
@@ -122,7 +127,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             PoroApiClient.startTelemetryPolling()
         }
-        if (gameName.isNotBlank() && tagLine.isNotBlank() && regionHost.isNotBlank()) {
+        if (gameName.isNotBlank() && tagLine.isNotBlank()) {
             startTftMonitoring()
         }
     }
@@ -133,10 +138,9 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         return popularPoroIcons[hash % popularPoroIcons.size]
     }
 
-    fun saveRiotCredentials(name: String, tag: String, region: String, key: String = apiKey) {
+    fun saveRiotCredentials(name: String, tag: String, selectedRegionCode: String, key: String = apiKey) {
         val cleanName = name.trim()
         val cleanTag = tag.trim().removePrefix("#")
-        val cleanRegion = region.trim().lowercase().removePrefix("https://").removePrefix("http://").removeSuffix("/")
 
         // Resetăm tot cache-ul vechi (PUUID, Meciuri, Pictogramă Profil) pentru noul cont
         prefs.edit()
@@ -147,7 +151,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
         gameName = cleanName
         tagLine = cleanTag
-        regionHost = cleanRegion
+        regionCode = selectedRegionCode
         if (key.isNotBlank()) apiKey = key.trim()
 
         // Schimbăm imediat pictograma de profil pentru noul Riot ID
@@ -158,7 +162,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit()
             .putString("riot_game_name", gameName)
             .putString("riot_tag_line", tagLine)
-            .putString("riot_region_host", regionHost)
+            .putString("riot_region_code", regionCode)
             .putString("riot_api_key", apiKey)
             .putInt("saved_profile_icon_id", profileIconId)
             .apply()
@@ -167,74 +171,14 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         startTftMonitoring()
     }
 
-    fun checkNewTftMatchNow() {
-        viewModelScope.launch {
-            if (gameName.isBlank() || tagLine.isBlank()) {
-                showRiotDialog = true
-                return@launch
-            }
 
-            tftStatusMessage = "Se verifică meciurile pentru $gameName#$tagLine..."
-
-            var puuid = prefs.getString("saved_puuid", null)
-            if (puuid == null) {
-                val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
-                puuid = when (result) {
-                    is RiotResult.Success -> {
-                        val realPuuid = result.data
-                        prefs.edit().putString("saved_puuid", realPuuid).apply()
-                        realPuuid
-                    }
-                    is RiotResult.Error -> {
-                        val localPuuid = "puuid_" + java.util.UUID.nameUUIDFromBytes("$gameName#$tagLine".lowercase().toByteArray()).toString()
-                        prefs.edit().putString("saved_puuid", localPuuid).apply()
-                        localPuuid
-                    }
-                }
-            }
-
-            val realIconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
-            if (realIconId != null) {
-                profileIconId = realIconId
-                profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
-                prefs.edit().putInt("saved_profile_icon_id", realIconId).apply()
-            }
-
-            val latestMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
-            var lastMatchId = prefs.getString("last_tft_match_id", null)
-
-            if (latestMatchId != null && latestMatchId != lastMatchId) {
-                val matchDetails = RiotTftManager.getTftMatchDetails(regionHost, latestMatchId, apiKey)
-                val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
-
-                if (participant != null) {
-                    val placement = participant.placement
-                    if (placement in 1..4) {
-                        addSnax(1)
-                        tftStatusMessage = "Meci nou găsit! Locul $placement (Top 4) - Recompensă +1 Poro-Snax acordată!"
-                    } else {
-                        tftStatusMessage = "Meci nou găsit! Locul $placement - Nicio recompensă (necesar Top 4)."
-                    }
-                } else {
-                    addSnax(1)
-                    tftStatusMessage = "Meci nou verificat pentru $gameName#$tagLine! +1 Poro-Snax adăugat în stoc!"
-                }
-
-                lastMatchId = latestMatchId
-                prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
-            } else {
-                addSnax(1)
-                tftStatusMessage = "Meci verificat pentru $gameName#$tagLine! +1 Poro-Snax adăugat în stoc!"
-            }
-        }
-    }
 
     fun openRiotDialog() {
         showRiotDialog = true
     }
 
     fun dismissRiotDialog() {
-        if (gameName.isNotBlank() && tagLine.isNotBlank() && regionHost.isNotBlank()) {
+        if (gameName.isNotBlank() && tagLine.isNotBlank() && regionCode.isNotBlank()) {
             showRiotDialog = false
         }
     }
@@ -258,8 +202,8 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             var puuid = prefs.getString("saved_puuid", null)
 
             if (puuid == null) {
-                tftStatusMessage = "Se conectează la $gameName#$tagLine ($regionHost)..."
-                val result = RiotTftManager.getPuuidByRiotId(regionHost, gameName, tagLine, apiKey)
+                tftStatusMessage = "Se conectează la $gameName#$tagLine ($regionCode)..."
+                val result = RiotTftManager.getPuuidByRiotId(macroHost, gameName, tagLine, apiKey)
                 
                 puuid = when (result) {
                     is RiotResult.Success -> {
@@ -275,7 +219,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val realIconId = RiotTftManager.getSummonerProfileIconId(regionHost, puuid, apiKey, tagLine)
+            val realIconId = RiotTftManager.getSummonerProfileIconId(platformHost, puuid, apiKey)
             if (realIconId != null) {
                 profileIconId = realIconId
                 profileIconUrl = "https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/$realIconId.png"
@@ -287,43 +231,42 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 prefs.edit().putInt("saved_profile_icon_id", fallbackIcon).apply()
             }
 
-            tftStatusMessage = "Cont conectat ($gameName#$tagLine)! Monitorizare TFT..."
+            tftStatusMessage = "Cont $gameName#$tagLine ($regionCode) conectat! Monitorizare TFT activă (verificare la 10 min)..."
 
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
             // La prima rulare, salvăm doar ultimul meci jucat fără recompense retroactive
             if (lastMatchId == null) {
-                val initialMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
+                val initialMatchId = RiotTftManager.getLatestTftMatchId(macroHost, puuid, apiKey)
                 if (initialMatchId != null) {
                     lastMatchId = initialMatchId
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
                 }
             }
 
-            // Loop de interogare periodică (la fiecare 60s)
+            // Loop de verificări automate la fiecare 10 minute
             while (isActive) {
-                val latestMatchId = RiotTftManager.getLatestTftMatchId(regionHost, puuid, apiKey)
+                delay(10 * 60 * 1000L) // 10 minute
+                
+                val latestMatchId = RiotTftManager.getLatestTftMatchId(macroHost, puuid, apiKey)
                 
                 if (latestMatchId != null && latestMatchId != lastMatchId) {
-                    // Meci nou găsit! Preluăm detaliile meciului
-                    val matchDetails = RiotTftManager.getTftMatchDetails(regionHost, latestMatchId, apiKey)
+                    val matchDetails = RiotTftManager.getTftMatchDetails(macroHost, latestMatchId, apiKey)
                     val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
 
                     if (participant != null) {
                         val placement = participant.placement
                         if (placement in 1..4) {
                             addSnax(1)
-                            tftStatusMessage = "Meci nou! Locul $placement (Top 4) - Recompensă: +1 Poro-Snax!"
+                            tftStatusMessage = "Meci TFT nou! Locul $placement (Top 4) - Recompensă +1 Poro-Snax adăugat!"
                         } else {
-                            tftStatusMessage = "Meci nou! Locul $placement - Nicio recompensă."
+                            tftStatusMessage = "Meci TFT nou! Locul $placement - Nicio recompensă (necesar Top 4)."
                         }
                     }
 
                     lastMatchId = latestMatchId
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
                 }
-
-                delay(60_000L)
             }
         }
     }
@@ -457,13 +400,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class RiotRegionOption(val name: String, val host: String)
+data class RiotRegionOption(
+    val code: String,
+    val name: String,
+    val platformHost: String,
+    val macroHost: String
+)
 
 val RiotRegions = listOf(
-    RiotRegionOption("Europe (EUNE, EUW, TR, RU)", "europe.api.riotgames.com"),
-    RiotRegionOption("Americas (NA, BR, LAN, LAS)", "americas.api.riotgames.com"),
-    RiotRegionOption("Asia (KR, JP)", "asia.api.riotgames.com"),
-    RiotRegionOption("SEA / Oceania (OCE, PH, SG, TW)", "sea.api.riotgames.com")
+    RiotRegionOption("EUNE", "EUNE (Europe Nordic & East)", "eun1.api.riotgames.com", "europe.api.riotgames.com"),
+    RiotRegionOption("EUW", "EUW (Europe West)", "euw1.api.riotgames.com", "europe.api.riotgames.com"),
+    RiotRegionOption("NA", "NA (North America)", "na1.api.riotgames.com", "americas.api.riotgames.com"),
+    RiotRegionOption("KR", "KR (Korea)", "kr.api.riotgames.com", "asia.api.riotgames.com"),
+    RiotRegionOption("TR", "TR (Turkey)", "tr1.api.riotgames.com", "europe.api.riotgames.com"),
+    RiotRegionOption("RU", "RU (Russia)", "ru.api.riotgames.com", "europe.api.riotgames.com"),
+    RiotRegionOption("BR", "BR (Brazil)", "br1.api.riotgames.com", "americas.api.riotgames.com"),
+    RiotRegionOption("OCE", "OCE (Oceania)", "oc1.api.riotgames.com", "sea.api.riotgames.com")
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -472,11 +424,11 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
     if (viewModel.showRiotDialog) {
         var tempName by remember { mutableStateOf(viewModel.gameName) }
         var tempTag by remember { mutableStateOf(viewModel.tagLine.removePrefix("#")) }
-        var tempRegionHost by remember { mutableStateOf(viewModel.regionHost) }
+        var tempRegionCode by remember { mutableStateOf(viewModel.regionCode) }
         var isDropdownExpanded by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf("") }
 
-        val selectedRegionName = RiotRegions.find { it.host.equals(tempRegionHost, ignoreCase = true) }?.name ?: RiotRegions.first().name
+        val selectedRegionName = RiotRegions.find { it.code.equals(tempRegionCode, ignoreCase = true) }?.name ?: RiotRegions.first().name
 
         AlertDialog(
             onDismissRequest = { viewModel.dismissRiotDialog() },
@@ -531,9 +483,9 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                         ) {
                             RiotRegions.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(option.name, fontSize = 12.sp, fontWeight = if (option.host.equals(tempRegionHost, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal) },
+                                    text = { Text(option.name, fontSize = 12.sp, fontWeight = if (option.code.equals(tempRegionCode, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal) },
                                     onClick = {
-                                        tempRegionHost = option.host
+                                        tempRegionCode = option.code
                                         isDropdownExpanded = false
                                     }
                                 )
@@ -551,10 +503,10 @@ fun RiotIdSetupDialog(viewModel: PoroViewModel) {
                 Button(
                     onClick = {
                         val cleanTag = tempTag.trim().removePrefix("#")
-                        if (tempName.trim().isBlank() || cleanTag.isBlank() || tempRegionHost.trim().isBlank()) {
+                        if (tempName.trim().isBlank() || cleanTag.isBlank() || tempRegionCode.trim().isBlank()) {
                             errorMessage = "Numele, Tag-ul și Regiunea sunt obligatorii!"
                         } else {
-                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionHost)
+                            viewModel.saveRiotCredentials(tempName, cleanTag, tempRegionCode)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
@@ -1176,24 +1128,11 @@ fun ControlConsoleTab(
                     Text("Status TFT: ${viewModel.tftStatusMessage}", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
                     
                     Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    OutlinedButton(
+                        onClick = { viewModel.openRiotDialog() },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Button(
-                            onClick = { viewModel.checkNewTftMatchNow() },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
-                        ) {
-                            Text("Verifică Meci TFT", fontSize = 12.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = { viewModel.openRiotDialog() },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Modifică Riot ID", fontSize = 12.sp)
-                        }
+                        Text("Modifică Riot ID")
                     }
                 }
             }
