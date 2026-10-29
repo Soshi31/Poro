@@ -183,7 +183,7 @@ object RiotTftManager {
                 if (response.isSuccessful) {
                     val html = response.body?.string()
                     if (html != null) {
-                        val regex1 = Regex("""<img[^>]+src=[^>]+profileIcon(\d+)\.(?:jpg|png)""", setOf(RegexOption.IGNORE_CASE))
+                        val regex1 = Regex("""profileIcon(\d+)\.(?:jpg|png)""", setOf(RegexOption.IGNORE_CASE))
                         val match1 = regex1.find(html)?.groupValues?.get(1)?.toIntOrNull()
                         if (match1 != null) return@withContext match1
 
