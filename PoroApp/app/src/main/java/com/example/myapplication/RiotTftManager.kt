@@ -229,6 +229,9 @@ object RiotTftManager {
                 .build()
 
             client.newCall(request).execute().use { response ->
+                if (response.code == 401 || response.code == 403) {
+                    return@withContext "API_KEY_EXPIRED"
+                }
                 if (response.isSuccessful) {
                     val body = response.body?.string()
                     if (body != null) {

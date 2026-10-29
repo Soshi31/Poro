@@ -275,41 +275,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            // Loop de verificări automate la fiecare 1 minut
-            while (isActive) {
-                delay(60 * 1000L) // 1 minut
-                
-                // Actualizare PUUID
-                if (puuid?.startsWith("puuid_") == true) {
-                    val result = RiotTftManager.getPuuidByRiotId(macroHost, gameName, tagLine, apiKey)
-                    if (result is RiotResult.Success) {
-                        puuid = result.data
-                        prefs.edit().putString("saved_puuid", puuid).apply()
-                    }
-                }
-
-                if (puuid != null && !puuid.startsWith("puuid_")) {
-                    val latestMatchId = RiotTftManager.getLatestTftMatchId(macroHost, puuid, apiKey)
-                    
-                    if (latestMatchId != null && latestMatchId != lastMatchId) {
-                        val matchDetails = RiotTftManager.getTftMatchDetails(macroHost, latestMatchId, apiKey)
-                        val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
-
-                        if (participant != null) {
-                            val placement = participant.placement
-                            if (placement in 1..4) {
-                                addSnax(1)
-                                tftStatusMessage = "Meci TFT nou! Locul $placement (Top 4) - Recompensă +1 Poro-Snax adăugat!"
-                            } else {
-                                tftStatusMessage = "Meci TFT nou! Locul $placement - Nicio recompensă (necesar Top 4)."
-                            }
-                        }
-
-                        lastMatchId = latestMatchId
-                        prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
-                    }
-                }
-            }
+            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Apasă butonul Refresh (sus) pentru a verifica TFT."
         }
     }
 
