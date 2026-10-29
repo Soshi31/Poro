@@ -32,6 +32,15 @@ data class TftMatchResponse(
     val info: TftMatchInfo?
 )
 
+data class ScrapedTftMatchInfo(
+    val placement: Int
+)
+
+data class ScrapedTftMatch(
+    val id: String,
+    val info: ScrapedTftMatchInfo
+)
+
 sealed class RiotResult<out T> {
     data class Success<out T>(val data: T) : RiotResult<T>()
     data class Error(val code: Int, val message: String) : RiotResult<Nothing>()
@@ -262,6 +271,63 @@ object RiotTftManager {
                     val body = response.body?.string()
                     if (body != null) {
                         return@withContext gson.fromJson(body, TftMatchResponse::class.java)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
+    }
+
+    suspend fun getScrapedLatestTftMatch(regionCode: String, gameName: String, tagLine: String): ScrapedTftMatch? = withContext(Dispatchers.IO) {
+        try {
+            val opGgRegion = when (regionCode.trim().uppercase()) {
+                "EUW" -> "euw"
+                "EUNE" -> "eune"
+                "NA" -> "na"
+                "KR" -> "kr"
+                "TR" -> "tr"
+                "RU" -> "ru"
+                "OCE" -> "oce"
+                "BR" -> "br"
+                "LAN" -> "lan"
+                "LAS" -> "las"
+                else -> "eune"
+            }
+            val cleanName = URLEncoder.encode(gameName.trim(), "UTF-8").replace("+", "%20")
+            val cleanTag = URLEncoder.encode(tagLine.trim().removePrefix("#"), "UTF-8").replace("+", "%20")
+            val url = "https://tactics.tools/player/$opGgRegion/$cleanName/$cleanTag"
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val html = response.body?.string()
+                    if (html != null) {
+                        val match = Regex("""<script id="__NEXT_DATA__" type="application/json">(.+?)</script>""").find(html)
+                        if (match != null) {
+                            val jsonStr = match.groupValues[1]
+                            val dataObj = org.json.JSONObject(jsonStr)
+                            
+                            val matchesArray = dataObj.optJSONObject("props")
+                                ?.optJSONObject("pageProps")
+                                ?.optJSONObject("initialData")
+                                ?.optJSONArray("matches")
+                                
+                            if (matchesArray != null && matchesArray.length() > 0) {
+                                val latestMatch = matchesArray.getJSONObject(0)
+                                val id = latestMatch.optString("id", "")
+                                val placement = latestMatch.optJSONObject("info")?.optInt("placement", -1) ?: -1
+                                if (id.isNotBlank() && placement > 0) {
+                                    return@withContext ScrapedTftMatch(id, ScrapedTftMatchInfo(placement))
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1,7 +1,18 @@
-import urllib.request
+import urllib.request, re, json
 try:
-    req = urllib.request.Request('https://lolchess.gg/api/profile/eune/Soshi/2609', headers={'User-Agent': 'Mozilla/5.0'})
-    html = urllib.request.urlopen(req).read().decode('utf-8')
-    print("NO V1:", html[:100])
+    # the op.gg api often uses standard formats
+    url = 'https://tft.op.gg/api/player/eune/Soshi-2609'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    res = urllib.request.urlopen(req).read().decode('utf-8')
+    print("tft.op.gg API:", res[:200])
 except Exception as e:
-    print(e)
+    print("tft.op.gg API error:", e)
+
+try:
+    # Maybe mobalytics?
+    url = 'https://app.mobalytics.gg/api/tft/v1/summoner/eune/Soshi-2609'
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    res = urllib.request.urlopen(req).read().decode('utf-8')
+    print("mobalytics API:", res[:200])
+except Exception as e:
+    print("mobalytics API error:", e)

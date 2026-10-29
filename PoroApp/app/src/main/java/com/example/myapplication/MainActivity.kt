@@ -268,14 +268,62 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
             // La prima rulare, salvăm doar ultimul meci jucat fără recompense retroactive
             if (lastMatchId == null) {
-                val initialMatchId = RiotTftManager.getLatestTftMatchId(macroHost, puuid, apiKey)
-                if (initialMatchId != null) {
-                    lastMatchId = initialMatchId
+                // Încercăm prima dată prin scraper (care merge fără cheie)
+                val scrapedInitial = RiotTftManager.getScrapedLatestTftMatch(regionCode, gameName, tagLine)
+                if (scrapedInitial != null) {
+                    lastMatchId = scrapedInitial.id
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+                } else {
+                    // Fallback la API dacă a eșuat scraperul
+                    val initialMatchId = RiotTftManager.getLatestTftMatchId(macroHost, puuid, apiKey)
+                    if (initialMatchId != null) {
+                        lastMatchId = initialMatchId
+                        prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+                    }
                 }
             }
 
-            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Apasă butonul Refresh (sus) pentru a verifica TFT."
+            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Apasă pictograma 👤 pentru a forța verificarea TFT, sau așteaptă monitorizarea."
+            
+            // Verificare automată cu interval sigur
+            while (isActive) {
+                delay(4 * 60 * 1000L) // 4 minute - mai echilibrat
+
+                val scrapedMatch = RiotTftManager.getScrapedLatestTftMatch(regionCode, gameName, tagLine)
+                if (scrapedMatch != null) {
+                    if (scrapedMatch.id != lastMatchId) {
+                        val placement = scrapedMatch.info.placement
+                        if (placement in 1..4) {
+                            addSnax(1)
+                            tftStatusMessage = "Meci TFT nou! Locul $placement (Top 4) - Recompensă +1 Poro-Snax adăugată!"
+                        } else {
+                            tftStatusMessage = "Meci TFT nou! Locul $placement - Nicio recompensă (necesar Top 4)."
+                        }
+                        lastMatchId = scrapedMatch.id
+                        prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+                    }
+                } else if (!puuid.startsWith("puuid_")) {
+                    // Fallback la Riot API oficial doar dacă scraperul pică ȘI cheia e încă validă (puuid-ul real a fost preluat)
+                    val latestMatchId = RiotTftManager.getLatestTftMatchId(macroHost, puuid, apiKey)
+                    
+                    if (latestMatchId != null && latestMatchId != "API_KEY_EXPIRED" && latestMatchId != lastMatchId) {
+                        val matchDetails = RiotTftManager.getTftMatchDetails(macroHost, latestMatchId, apiKey)
+                        val participant = matchDetails?.info?.participants?.find { it.puuid == puuid }
+
+                        if (participant != null) {
+                            val placement = participant.placement
+                            if (placement in 1..4) {
+                                addSnax(1)
+                                tftStatusMessage = "Meci TFT nou (API)! Locul $placement (Top 4) - +1 Poro-Snax."
+                            } else {
+                                tftStatusMessage = "Meci TFT nou (API)! Locul $placement - Nicio recompensă."
+                            }
+                        }
+                        lastMatchId = latestMatchId
+                        prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
+                    }
+                }
+            }
         }
     }
 
