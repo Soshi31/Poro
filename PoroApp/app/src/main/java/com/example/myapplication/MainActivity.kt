@@ -350,6 +350,30 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun checkMatchesNow() {
+        if (gameName.isBlank() || tagLine.isBlank()) return
+        viewModelScope.launch {
+            val fetchedHistory = RiotTftManager.getScrapedTftMatchHistory(regionCode, gameName, tagLine, 10)
+            if (fetchedHistory.isNotEmpty()) {
+                matchHistory.clear()
+                matchHistory.addAll(fetchedHistory)
+                
+                var lastMatchId = prefs.getString("last_tft_match_id", null)
+                val scrapedMatch = fetchedHistory.first()
+                if (lastMatchId != null && scrapedMatch.id != lastMatchId) {
+                    val placement = scrapedMatch.info.placement
+                    if (placement in 1..4) {
+                        addSnax(1)
+                        tftStatusMessage = "Meci TFT nou! Locul $placement (Top 4) - Recompensă +1 Poro-Snax adăugată!"
+                    } else {
+                        tftStatusMessage = "Meci TFT nou! Locul $placement - Nicio recompensă (necesar Top 4)."
+                    }
+                    prefs.edit().putString("last_tft_match_id", scrapedMatch.id).apply()
+                }
+            }
+        }
+    }
+
     fun updateWifiSsid(ssid: String) {
         wifiSsid = ssid
     }
@@ -614,6 +638,19 @@ fun PoroApp(
 ) {
     var selectedTab by remember { mutableIntStateOf(1) }
     val tabs = listOf("Istoric TFT", "Poro-Snax", "Control & Console")
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.checkMatchesNow()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     RiotIdSetupDialog(viewModel)
 
