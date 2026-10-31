@@ -353,12 +353,17 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     fun checkMatchesNow() {
         if (gameName.isBlank() || tagLine.isBlank()) return
         viewModelScope.launch {
+            val puuid = prefs.getString("saved_puuid", "puuid_local") ?: "puuid_local"
+            
+            // Re-descărcăm pictograma în caz că ai schimbat-o în League of Legends
+            updateProfileIcon(puuid)
+
             val fetchedHistory = RiotTftManager.getScrapedTftMatchHistory(regionCode, gameName, tagLine, 10)
             if (fetchedHistory.isNotEmpty()) {
                 matchHistory.clear()
                 matchHistory.addAll(fetchedHistory)
                 
-                var lastMatchId = prefs.getString("last_tft_match_id", null)
+                val lastMatchId = prefs.getString("last_tft_match_id", null)
                 val scrapedMatch = fetchedHistory.first()
                 if (lastMatchId != null && scrapedMatch.id != lastMatchId) {
                     val placement = scrapedMatch.info.placement
@@ -1661,20 +1666,18 @@ fun TftHistoryTab(viewModel: PoroViewModel) {
             border = cardBorder,
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
                 Text(
                     text = "Istoric Meciuri TFT",
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontFamily = FontFamily.Serif
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Meciurile noi îți aduc automat Poro-Snax dacă obții Locul 1-4!",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    textAlign = TextAlign.Center
                 )
             }
         }
