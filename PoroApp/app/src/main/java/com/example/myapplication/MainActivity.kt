@@ -21,8 +21,10 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -104,6 +106,9 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             prefs.getInt("poro_snax_count", 0)
         }
     )
+        private set
+
+    var matchHistory = mutableStateListOf<ScrapedTftMatch>()
         private set
 
     var tftStatusMessage by mutableStateOf("Monitorizare TFT inactivă")
@@ -266,12 +271,15 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
 
             var lastMatchId = prefs.getString("last_tft_match_id", null)
 
+            // Actualizare istoric meciuri
+            val history = RiotTftManager.getScrapedTftMatchHistory(regionCode, gameName, tagLine, 10)
+            matchHistory.clear()
+            matchHistory.addAll(history)
+
             // La prima rulare, salvăm doar ultimul meci jucat fără recompense retroactive
             if (lastMatchId == null) {
-                // Încercăm prima dată prin scraper (care merge fără cheie)
-                val scrapedInitial = RiotTftManager.getScrapedLatestTftMatch(regionCode, gameName, tagLine)
-                if (scrapedInitial != null) {
-                    lastMatchId = scrapedInitial.id
+                if (history.isNotEmpty()) {
+                    lastMatchId = history.first().id
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
                 } else {
                     // Fallback la API dacă a eșuat scraperul
@@ -289,8 +297,12 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             while (isActive) {
                 delay(4 * 60 * 1000L) // 4 minute - mai echilibrat
 
-                val scrapedMatch = RiotTftManager.getScrapedLatestTftMatch(regionCode, gameName, tagLine)
-                if (scrapedMatch != null) {
+                val history = RiotTftManager.getScrapedTftMatchHistory(regionCode, gameName, tagLine, 10)
+                if (history.isNotEmpty()) {
+                    matchHistory.clear()
+                    matchHistory.addAll(history)
+                    
+                    val scrapedMatch = history.first()
                     if (scrapedMatch.id != lastMatchId) {
                         val placement = scrapedMatch.info.placement
                         if (placement in 1..4) {
@@ -590,7 +602,7 @@ fun PoroApp(
     viewModel: PoroViewModel = viewModel()
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Poro-Snax", "Control & Console")
+    val tabs = listOf("Poro-Snax", "Control & Console", "Istoric TFT")
 
     RiotIdSetupDialog(viewModel)
 
@@ -615,7 +627,11 @@ fun PoroApp(
                             onClick = { selectedTab = index },
                             icon = {
                                 Icon(
-                                    if (index == 0) Icons.Filled.Cookie else Icons.Filled.Dashboard,
+                                    when (index) {
+                                        0 -> Icons.Filled.Cookie
+                                        1 -> Icons.Filled.Dashboard
+                                        else -> Icons.Filled.History
+                                    },
                                     contentDescription = title
                                 )
                             },
@@ -633,10 +649,10 @@ fun PoroApp(
             }
         ) { paddingValues ->
             Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
-                if (selectedTab == 0) {
-                    PoroSnaxTab(sensorManager, bleProximityManager, viewModel)
-                } else {
-                    ControlConsoleTab(sensorManager, bluetoothManager, bleProximityManager, viewModel)
+                when (selectedTab) {
+                    0 -> PoroSnaxTab(sensorManager, bleProximityManager, viewModel)
+                    1 -> ControlConsoleTab(sensorManager, bluetoothManager, bleProximityManager, viewModel)
+                    2 -> TftHistoryTab(viewModel)
                 }
             }
         }
@@ -1560,5 +1576,91 @@ fun ControlConsoleTab(
         }
 
         item { Spacer(modifier = Modifier.height(32.dp)) }
+    }
+}
+
+@Composable
+fun TftHistoryTab(viewModel: PoroViewModel) {
+    val cardBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+            border = cardBorder,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Istoric Meciuri TFT",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = FontFamily.Serif
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Meciurile noi îți aduc automat Poro-Snax dacă obții Locul 1-4!",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        if (viewModel.matchHistory.isEmpty()) {
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text("Niciun meci jucat recent sau cont neconfigurat.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(viewModel.matchHistory) { match ->
+                    val isTop4 = match.info.placement in 1..4
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, if (isTop4) MaterialTheme.colorScheme.primary else Color.DarkGray)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Locul ${match.info.placement}",
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isTop4) MaterialTheme.colorScheme.primary else Color.Gray
+                                )
+                                Text(
+                                    text = "ID: ${match.id}",
+                                    fontSize = 10.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                            
+                            if (isTop4) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("+1", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(Icons.Default.Cookie, contentDescription = "Poro-Snax", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            } else {
+                                Text("-", fontWeight = FontWeight.Bold, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

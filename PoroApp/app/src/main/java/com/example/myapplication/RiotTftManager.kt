@@ -281,6 +281,12 @@ object RiotTftManager {
     }
 
     suspend fun getScrapedLatestTftMatch(regionCode: String, gameName: String, tagLine: String): ScrapedTftMatch? = withContext(Dispatchers.IO) {
+        val history = getScrapedTftMatchHistory(regionCode, gameName, tagLine, 1)
+        return@withContext history.firstOrNull()
+    }
+
+    suspend fun getScrapedTftMatchHistory(regionCode: String, gameName: String, tagLine: String, limit: Int = 15): List<ScrapedTftMatch> = withContext(Dispatchers.IO) {
+        val historyList = mutableListOf<ScrapedTftMatch>()
         try {
             val opGgRegion = when (regionCode.trim().uppercase()) {
                 "EUW" -> "euw"
@@ -319,12 +325,16 @@ object RiotTftManager {
                                 ?.optJSONObject("initialData")
                                 ?.optJSONArray("matches")
                                 
-                            if (matchesArray != null && matchesArray.length() > 0) {
-                                val latestMatch = matchesArray.getJSONObject(0)
-                                val id = latestMatch.optString("id", "")
-                                val placement = latestMatch.optJSONObject("info")?.optInt("placement", -1) ?: -1
-                                if (id.isNotBlank() && placement > 0) {
-                                    return@withContext ScrapedTftMatch(id, ScrapedTftMatchInfo(placement))
+                            if (matchesArray != null) {
+                                val count = kotlin.math.min(matchesArray.length(), limit)
+                                for (i in 0 until count) {
+                                    val matchObj = matchesArray.getJSONObject(i)
+                                    val id = matchObj.optString("id", "")
+                                    val placement = matchObj.optJSONObject("info")?.optInt("placement", -1) ?: -1
+                                    
+                                    if (id.isNotBlank() && placement > 0) {
+                                        historyList.add(ScrapedTftMatch(id, ScrapedTftMatchInfo(placement)))
+                                    }
                                 }
                             }
                         }
@@ -334,6 +344,6 @@ object RiotTftManager {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return@withContext null
+        return@withContext historyList
     }
 }
