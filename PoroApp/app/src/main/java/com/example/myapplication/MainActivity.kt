@@ -291,18 +291,18 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Apasă pictograma 👤 pentru a forța verificarea TFT, sau așteaptă monitorizarea."
+            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Istoric 10 meciuri încărcat. Verificare nouă la fiecare 4 min."
             
             // Verificare automată cu interval sigur
             while (isActive) {
                 delay(4 * 60 * 1000L) // 4 minute - mai echilibrat
 
-                val history = RiotTftManager.getScrapedTftMatchHistory(regionCode, gameName, tagLine, 10)
-                if (history.isNotEmpty()) {
+                val fetchedHistory = RiotTftManager.getScrapedTftMatchHistory(regionCode, gameName, tagLine, 10)
+                if (fetchedHistory.isNotEmpty()) {
                     matchHistory.clear()
-                    matchHistory.addAll(history)
+                    matchHistory.addAll(fetchedHistory)
                     
-                    val scrapedMatch = history.first()
+                    val scrapedMatch = fetchedHistory.first()
                     if (scrapedMatch.id != lastMatchId) {
                         val placement = scrapedMatch.info.placement
                         if (placement in 1..4) {
@@ -1197,7 +1197,7 @@ fun ControlConsoleTab(
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text("Status TFT: ${viewModel.tftStatusMessage}", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
                     
                     Spacer(modifier = Modifier.height(12.dp))
@@ -1210,6 +1210,7 @@ fun ControlConsoleTab(
                 }
             }
         }
+
 
         // 2. ACȚIUNI RAPIDE (cu buton Mute)
         item {
