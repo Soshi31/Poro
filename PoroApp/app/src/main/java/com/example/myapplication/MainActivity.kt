@@ -291,7 +291,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Istoric 10 meciuri încărcat. Verificare nouă la fiecare 4 min."
+            tftStatusMessage = "Cont conectat ($gameName#$tagLine). Istoric încărcat. Monitorizare automată pornită."
             
             // Verificare automată cu interval sigur
             while (isActive) {
@@ -601,8 +601,8 @@ fun PoroApp(
     bleProximityManager: PoroBleProximityManager,
     viewModel: PoroViewModel = viewModel()
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Poro-Snax", "Control & Console", "Istoric TFT")
+    var selectedTab by remember { mutableIntStateOf(1) }
+    val tabs = listOf("Istoric TFT", "Poro-Snax", "Control & Console")
 
     RiotIdSetupDialog(viewModel)
 
@@ -610,7 +610,7 @@ fun PoroApp(
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(id = R.drawable.backround),
             contentDescription = "Background",
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -628,9 +628,9 @@ fun PoroApp(
                             icon = {
                                 Icon(
                                     when (index) {
-                                        0 -> Icons.Filled.Cookie
-                                        1 -> Icons.Filled.Dashboard
-                                        else -> Icons.Filled.History
+                                        0 -> Icons.Filled.History
+                                        1 -> Icons.Filled.Cookie
+                                        else -> Icons.Filled.Dashboard
                                     },
                                     contentDescription = title
                                 )
@@ -650,9 +650,9 @@ fun PoroApp(
         ) { paddingValues ->
             Box(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
                 when (selectedTab) {
-                    0 -> PoroSnaxTab(sensorManager, bleProximityManager, viewModel)
-                    1 -> ControlConsoleTab(sensorManager, bluetoothManager, bleProximityManager, viewModel)
-                    2 -> TftHistoryTab(viewModel)
+                    0 -> TftHistoryTab(viewModel)
+                    1 -> PoroSnaxTab(sensorManager, bleProximityManager, viewModel)
+                    2 -> ControlConsoleTab(sensorManager, bluetoothManager, bleProximityManager, viewModel)
                 }
             }
         }
