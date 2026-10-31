@@ -276,9 +276,20 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
             matchHistory.clear()
             matchHistory.addAll(history)
 
-            // La prima rulare, salvăm doar ultimul meci jucat fără recompense retroactive
+            // La prima rulare (când abia te-ai logat)
             if (lastMatchId == null) {
                 if (history.isNotEmpty()) {
+                    // Contorizăm Snax-urile din ISTORIC (pentru locurile 1-4 din ultimele 10 meciuri)
+                    var initialSnax = 0
+                    for (match in history) {
+                        if (match.info.placement in 1..4) {
+                            initialSnax += 1
+                        }
+                    }
+                    if (initialSnax > 0) {
+                        addSnax(initialSnax)
+                    }
+                    
                     lastMatchId = history.first().id
                     prefs.edit().putString("last_tft_match_id", lastMatchId).apply()
                 } else {
