@@ -775,8 +775,12 @@ fun PoroSnaxTab(
                     return@forEach
                 }
 
-                b.vx += accelX * 180f * dt
-                b.vy += accelY * 180f * dt
+                // Adăugăm mici variații aleatorii pentru ca biscuiții să nu se mai miște într-o structură rigidă perfectă
+                val noiseX = ((b.hashCode() % 100) / 100f - 0.5f) * 40f
+                val noiseY = (((b.hashCode() / 10) % 100) / 100f - 0.5f) * 40f
+
+                b.vx += (accelX * 180f + noiseX) * dt
+                b.vy += (accelY * 180f + noiseY) * dt
 
                 b.x += b.vx * dt
                 b.y += b.vy * dt
@@ -814,6 +818,7 @@ fun PoroSnaxTab(
                 }
             }
 
+            // Coliziune și repulsie între biscuiți pentru a nu sta perfect suprapuși
             for (i in biscuits.indices) {
                 for (j in i + 1 until biscuits.size) {
                     val b1 = biscuits[i]
@@ -822,26 +827,38 @@ fun PoroSnaxTab(
 
                     val dx = b2.x - b1.x
                     val dy = b2.y - b1.y
-                    val dist = sqrt(dx * dx + dy * dy)
+                    val dist = kotlin.math.sqrt(dx * dx + dy * dy)
                     val minDist = (b1.radius + b2.radius) * 0.82f
-
-                    if (dist < minDist && dist > 0.01f) {
+                    
+                    if (dist < minDist && dist > 0.1f) {
                         val overlap = minDist - dist
                         val nx = dx / dist
                         val ny = dy / dist
-
-                        b1.x -= nx * overlap / 2
-                        b1.y -= ny * overlap / 2
-                        b2.x += nx * overlap / 2
-                        b2.y += ny * overlap / 2
-
-                        val kx = b1.vx - b2.vx
-                        val ky = b1.vy - b2.vy
-                        val p = 2f * (nx * kx + ny * ky) / 2f
-                        b1.vx -= p * nx * 0.8f
-                        b1.vy -= p * ny * 0.8f
-                        b2.vx += p * nx * 0.8f
-                        b2.vy += p * ny * 0.8f
+                        
+                        // Respingere vizuală proporțională (push apart)
+                        val pushX = nx * overlap * 0.5f
+                        val pushY = ny * overlap * 0.5f
+                        
+                        b1.x -= pushX
+                        b1.y -= pushY
+                        b2.x += pushX
+                        b2.y += pushY
+                        
+                        // Transfer elastic de energie pentru un efect de bouncing realist (jittering)
+                        val relVx = b2.vx - b1.vx
+                        val relVy = b2.vy - b1.vy
+                        val velAlongNormal = relVx * nx + relVy * ny
+                        
+                        if (velAlongNormal < 0) {
+                            val restitution = 0.4f
+                            val jImpulse = -(1f + restitution) * velAlongNormal / 2f
+                            val impulseX = jImpulse * nx
+                            val impulseY = jImpulse * ny
+                            b1.vx -= impulseX
+                            b1.vy -= impulseY
+                            b2.vx += impulseX
+                            b2.vy += impulseY
+                        }
                     }
                 }
             }
