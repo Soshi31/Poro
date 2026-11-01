@@ -482,6 +482,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        requestRequiredPermissions()
 
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
         sensorManager = PoroSensorManager(this, scope)
@@ -500,6 +502,28 @@ class MainActivity : ComponentActivity() {
                     PoroApp(sensorManager, bluetoothManager, bleProximityManager)
                 }
             }
+        }
+    }
+
+    private fun requestRequiredPermissions() {
+        val permissions = mutableListOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
+        } else {
+            permissions.add(android.Manifest.permission.BLUETOOTH)
+            permissions.add(android.Manifest.permission.BLUETOOTH_ADMIN)
+        }
+        
+        val missing = permissions.filter { 
+            androidx.core.content.ContextCompat.checkSelfPermission(this, it) != android.content.pm.PackageManager.PERMISSION_GRANTED 
+        }
+        
+        if (missing.isNotEmpty()) {
+            androidx.core.app.ActivityCompat.requestPermissions(this, missing.toTypedArray(), 1001)
         }
     }
 
