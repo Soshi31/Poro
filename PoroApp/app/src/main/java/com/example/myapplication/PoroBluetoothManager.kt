@@ -18,6 +18,12 @@ import java.util.UUID
 
 data class WifiCredentials(val ssid: String, val pass: String)
 
+data class WifiProvisionResult(
+    val success: Boolean,
+    val ipAddress: String? = null,
+    val message: String
+)
+
 class PoroBluetoothManager(private val context: Context) {
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
@@ -50,7 +56,11 @@ class PoroBluetoothManager(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun sendWifiCredentials(device: BluetoothDevice, ssid: String, pass: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun sendWifiCredentials(
+        device: BluetoothDevice,
+        ssid: String,
+        pass: String
+    ): WifiProvisionResult = withContext(Dispatchers.IO) {
         val deviceName = try { device.name ?: "Dispozitiv BT" } catch (e: Exception) { "Dispozitiv BT" }
         _status.value = "Se conectează la $deviceName..."
         var socket: BluetoothSocket? = null
@@ -73,17 +83,43 @@ class PoroBluetoothManager(private val context: Context) {
             socket.outputStream.write(jsonPayload.toByteArray(Charsets.UTF_8))
             socket.outputStream.flush()
 
-            _status.value = "Trimis cu succes! Robotul se conectează..."
-            delay(3000)
-            socket.close()
-            _status.value = "Deconectat"
-            true
+            _status.value = "Se așteaptă adresa IP de la Poro..."
+            
+            val reader = socket.inputStream.bufferedReader(Charsets.UTF_8)
+            var receivedIp: String? = null
+
+            // Așteptăm până la 15 secunde răspunsul cu IP-ul de la Poro (timp necesar conectării la rețeaua Wi-Fi)
+            val startTime = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startTime < 15000) {
+                if (reader.ready()) {
+                    val line = reader.readLine()
+                    if (!line.isNullOrBlank()) {
+                        // Regex pentru extragerea adresei IP (ex: 192.168.1.50)
+                        val ipRegex = Regex("""\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b""")
+                        val match = ipRegex.find(line)
+                        if (match != null) {
+                            receivedIp = match.value
+                            break
+                        }
+                    }
+                }
+                delay(200)
+            }
+
+            return@withContext if (receivedIp != null) {
+                _status.value = "Conectat! IP preluat: $receivedIp"
+                try { socket.close() } catch (ignored: Exception) {}
+                WifiProvisionResult(true, receivedIp, "IP preluat automat: $receivedIp")
+            } else {
+                _status.value = "Wi-Fi Trimis (IP netransmis în 15s)"
+                try { socket.close() } catch (ignored: Exception) {}
+                WifiProvisionResult(true, null, "Date trimise cu succes, dar IP-ul nu a fost returnat.")
+            }
         } catch (e: Exception) {
-            _status.value = "Eroare Conectare: ${e.localizedMessage ?: "Eșuat"}"
-            try {
-                socket?.close()
-            } catch (ignored: IOException) {}
-            false
+            val errorMsg = "Eroare Conectare: ${e.localizedMessage ?: "Eșuat"}"
+            _status.value = errorMsg
+            try { socket?.close() } catch (ignored: IOException) {}
+            return@withContext WifiProvisionResult(false, null, errorMsg)
         }
     }
 }

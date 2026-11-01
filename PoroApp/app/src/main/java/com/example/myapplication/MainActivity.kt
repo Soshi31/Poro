@@ -390,7 +390,15 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     fun sendWifiViaBluetooth(bluetoothManager: PoroBluetoothManager, device: android.bluetooth.BluetoothDevice) {
         if (wifiSsid.isNotBlank()) {
             viewModelScope.launch {
-                bluetoothManager.sendWifiCredentials(device, wifiSsid, wifiPassword)
+                val result = bluetoothManager.sendWifiCredentials(device, wifiSsid, wifiPassword)
+                if (result.ipAddress != null) {
+                    val formattedIp = if (!result.ipAddress.startsWith("http://") && !result.ipAddress.startsWith("https://")) {
+                        "http://${result.ipAddress}:8000"
+                    } else {
+                        result.ipAddress
+                    }
+                    updateIpAddress(formattedIp)
+                }
             }
         }
     }
