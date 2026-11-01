@@ -722,16 +722,14 @@ fun PoroApp(
 
 
 class BiscuitState(
-    x: Float,
-    y: Float,
+    var x: Float,
+    var y: Float,
     val radius: Float = 75f
 ) {
-    var x by mutableFloatStateOf(x)
-    var y by mutableFloatStateOf(y)
     var vx = 0f
     var vy = 0f
-    var isFlying by mutableStateOf(false)
-    var flyingAlpha by mutableFloatStateOf(1f)
+    var isFlying = false
+    var flyingAlpha = 1f
 }
 
 class StarParticle(
@@ -783,6 +781,7 @@ fun PoroSnaxTab(
     val starParticles = remember { mutableStateListOf<StarParticle>() }
     var celebrationTimeLeft by remember { mutableFloatStateOf(0f) }
     var lastTossTimestamp by remember { mutableLongStateOf(0L) }
+    var drawTrigger by remember { mutableLongStateOf(0L) }
 
     var boxWidth by remember { mutableFloatStateOf(0f) }
     var boxHeight by remember { mutableFloatStateOf(0f) }
@@ -796,6 +795,8 @@ fun PoroSnaxTab(
             lastTime = currentTime
 
             if (dt > 0.1f) continue
+
+            drawTrigger = currentTime
 
             var rattleTriggered = false
 
@@ -1046,6 +1047,7 @@ fun PoroSnaxTab(
             boxHeight = maxHeight.value * androidx.compose.ui.platform.LocalDensity.current.density
 
             Canvas(modifier = Modifier.fillMaxSize()) {
+                drawTrigger // Citire stare frame pentru redesenare Canvas optimizată
                 val boxRectSize = Size(size.width, size.height)
                 
                 // Inset-ăm fundalul interior maro astfel încât să stea strict în spatele cutiei
@@ -1522,7 +1524,7 @@ fun ControlConsoleTab(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (poroDevice != null) "Status Bluetooth: Conectat" else "Status Bluetooth: Deconectat",
+                            text = if (poroDevice != null) "Status BT: Împerecheat cu Poro (${poroDevice.name ?: "Poro"})" else "Status BT: Dispozitiv Poro Negăsit",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (poroDevice != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
