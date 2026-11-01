@@ -1164,6 +1164,7 @@ fun getNearbyWifiNetworks(context: android.content.Context): List<String> {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @android.annotation.SuppressLint("MissingPermission")
 @Composable
 fun ControlConsoleTab(
@@ -1494,7 +1495,7 @@ fun ControlConsoleTab(
             val context = LocalContext.current
             val btStatus by bluetoothManager.status.collectAsState()
             var poroDevices by remember { mutableStateOf(bluetoothManager.getPoroDevices()) }
-            val poroDevice = poroDevices.firstOrNull()
+            var selectedDeviceIndex by remember { mutableIntStateOf(0) }
             var isPasswordVisible by remember { mutableStateOf(false) }
             var nearbyWifiList by remember { mutableStateOf(getNearbyWifiNetworks(context)) }
 
@@ -1520,16 +1521,55 @@ fun ControlConsoleTab(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (poroDevice != null) MaterialTheme.colorScheme.primary else Color.Red)
+                                .background(if (poroDevices.isNotEmpty()) MaterialTheme.colorScheme.primary else Color.Red)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (poroDevice != null) "Status BT: Împerecheat cu Poro (${poroDevice.name ?: "Poro"})" else "Status BT: Dispozitiv Poro Negăsit",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (poroDevice != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
+                        
+                        var expandedBT by remember { mutableStateOf(false) }
+                        var selectedDeviceIndex by remember { mutableIntStateOf(0) }
+                        val currentDevice = poroDevices.getOrNull(selectedDeviceIndex)
+                        
+                        if (poroDevices.isNotEmpty() && currentDevice != null) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Status BT: Conectat", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                
+                                ExposedDropdownMenuBox(
+                                    expanded = expandedBT,
+                                    onExpandedChange = { expandedBT = !expandedBT }
+                                ) {
+                                    Text(
+                                        text = currentDevice.name ?: "Dispozitiv Necunoscut",
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true).clickable { expandedBT = true },
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = expandedBT,
+                                        onDismissRequest = { expandedBT = false }
+                                    ) {
+                                        poroDevices.forEachIndexed { idx, dev ->
+                                            DropdownMenuItem(
+                                                text = { Text(dev.name ?: "Dispozitiv Necunoscut", fontSize = 12.sp) },
+                                                onClick = {
+                                                    selectedDeviceIndex = idx
+                                                    expandedBT = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "Status BT: Niciun dispozitiv împerecheat",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
                         IconButton(onClick = { poroDevices = bluetoothManager.getPoroDevices() }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh BT", tint = MaterialTheme.colorScheme.primary)
                         }
@@ -1608,11 +1648,12 @@ fun ControlConsoleTab(
 
                     Button(
                         onClick = {
-                            poroDevice?.let { dev ->
+                            val currentDevice = poroDevices.getOrNull(selectedDeviceIndex)
+                            currentDevice?.let { dev ->
                                 viewModel.sendWifiViaBluetooth(bluetoothManager, dev)
                             }
                         },
-                        enabled = poroDevice != null && viewModel.wifiSsid.isNotBlank(),
+                        enabled = poroDevices.isNotEmpty() && viewModel.wifiSsid.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
                     ) {

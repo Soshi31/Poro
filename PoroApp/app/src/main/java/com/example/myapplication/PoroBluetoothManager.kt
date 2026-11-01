@@ -43,13 +43,17 @@ class PoroBluetoothManager(private val context: Context) {
     fun getPoroDevices(): List<BluetoothDevice> {
         return try {
             val allDevices = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
-            // Filtrare strictă: afișează DOAR dispozitivul robotului Poro / Raspberry Pi
-            allDevices.filter { dev ->
+            // Filtrare extinsă: returnează toate dispozitivele dacă nu e găsit niciunul clar
+            val poroDevices = allDevices.filter { dev ->
                 val name = try { dev.name ?: "" } catch (e: Exception) { "" }
                 name.contains("Poro", ignoreCase = true) ||
                 name.contains("Raspberry", ignoreCase = true) ||
-                name.contains("Pi", ignoreCase = true)
+                name.contains("Pi", ignoreCase = true) ||
+                name.contains("ubuntu", ignoreCase = true) ||
+                name.contains("debian", ignoreCase = true)
             }
+            // Dacă filtrul este prea restrictiv, arată toate dispozitivele BT împerecheate pentru a permite utilizatorului să selecteze manual
+            if (poroDevices.isEmpty()) allDevices else poroDevices
         } catch (e: Exception) {
             emptyList()
         }
