@@ -29,7 +29,7 @@ data class TelemetryResponse(
 )
 
 object PoroApiClient {
-    private var baseUrl = "http://192.168.1.50:8000"
+    private var baseUrl = "http://poro.local:8000"
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)

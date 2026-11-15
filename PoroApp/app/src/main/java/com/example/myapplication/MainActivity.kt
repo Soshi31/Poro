@@ -69,7 +69,7 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
     val telemetryFlow = PoroApiClient.telemetryFlow
     val isOnline = PoroApiClient.isOnline
 
-    var ipAddress by mutableStateOf(prefs.getString("saved_ip", "http://192.168.1.50:8000") ?: "http://192.168.1.50:8000")
+    var ipAddress by mutableStateOf(prefs.getString("saved_ip", "http://poro.local:8000") ?: "http://poro.local:8000")
         private set
 
     // Riot ID & TFT Monitor State
