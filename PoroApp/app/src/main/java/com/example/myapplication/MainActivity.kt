@@ -409,13 +409,6 @@ class PoroViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("saved_ip", PoroApiClient.getBaseUrl()).apply()
     }
 
-    fun saveIpAddress() {
-        PoroApiClient.setBaseUrl(ipAddress)
-        val formattedUrl = PoroApiClient.getBaseUrl()
-        ipAddress = formattedUrl
-        prefs.edit().putString("saved_ip", formattedUrl).apply()
-    }
-
     fun updateChatMessage(msg: String) {
         chatMessage = msg
     }
@@ -1487,28 +1480,6 @@ fun ControlConsoleTab(
                         Spacer(modifier = Modifier.weight(1f))
                         
                         Text("Batt: ${if (telemetry?.battery_ok == true) "OK" else "LOW"}")
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = viewModel.ipAddress,
-                            onValueChange = { viewModel.updateIpAddress(it) },
-                            modifier = Modifier.weight(1f),
-                            label = { Text("Adresă IP", color = MaterialTheme.colorScheme.secondary) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.secondary
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = { viewModel.saveIpAddress() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.Black)
-                        ) {
-                            Text("Save")
-                        }
                     }
                 }
             }
