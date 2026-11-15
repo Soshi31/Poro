@@ -59,10 +59,12 @@ class PoroBleProximityManager(private val context: Context) {
             val scanRecordName = result.scanRecord?.deviceName
             val deviceName = try { device.name ?: scanRecordName ?: "" } catch (e: Exception) { "" }
 
-            // Filtrare strictă: Procesăm RSSI DOAR pentru dispozitivul robotului Poro / Raspberry Pi
+            // Filtrare extinsă pentru a include mai multe nume implicite de Raspberry Pi
             val isPoroDevice = deviceName.contains("Poro", ignoreCase = true) || 
                                deviceName.contains("Raspberry", ignoreCase = true) || 
                                deviceName.contains("Pi", ignoreCase = true) ||
+                               deviceName.contains("ubuntu", ignoreCase = true) ||
+                               deviceName.contains("debian", ignoreCase = true) ||
                                scanRecordName?.contains("Poro", ignoreCase = true) == true
 
             if (isPoroDevice) {
@@ -102,15 +104,25 @@ class PoroBleProximityManager(private val context: Context) {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
 
-            // Putem adăuga un filtru pentru UUID-ul Poro sau prefixe MAC Raspberry Pi ("B8:27:EB", "DC:A6:32", "E4:5F:01")
             val filters = mutableListOf<ScanFilter>()
-            
-            // Exemplu de filtru pe Service UUID (dacă Pi transmite BLE advertisement)
-            // val serviceUuid = ParcelUuid(UUID.fromString("0000180a-0000-1000-8000-00805f9b34fb"))
-            // filters.add(ScanFilter.Builder().setServiceUuid(serviceUuid).build())
 
             scanner.startScan(filters, settings, scanCallback)
             _state.value = _state.value.copy(isScanning = true)
+            
+            // Thread de watchdog pentru a reseta starea dacă dispozitivul a ieșit din raza de acoperire
+            Thread {
+                while (_state.value.isScanning) {
+                    val now = System.currentTimeMillis()
+                    if (lastSeenTimestamp > 0 && now - lastSeenTimestamp > 5000L) { // După 5 secunde
+                        _state.value = _state.value.copy(
+                            isNear = false,
+                            status = "FAR (Pierdut)"
+                        )
+                        lastSeenTimestamp = 0L // Resetăm
+                    }
+                    Thread.sleep(2000L)
+                }
+            }.start()
         } catch (e: Exception) {
             _state.value = _state.value.copy(isScanning = false)
         }
